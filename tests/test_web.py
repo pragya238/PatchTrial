@@ -68,10 +68,12 @@ class WebTests(unittest.TestCase):
 
     def test_public_workspace_has_a_safe_runnable_demo(self):
         page = (Path(__file__).parent.parent / "dashboard" / "dist" / "live.html").read_text()
-        self.assertIn("Browser demo ready · no API key needed", page)
+        self.assertIn("Browser demo ready · real mode available locally", page)
         self.assertIn("function runPublicTrial()", page)
         self.assertIn("if(!isLocal){runPublicTrial();return}", page)
-        self.assertIn("$('#config').hidden=true", page)
+        self.assertNotIn("$('#config').hidden=true", page)
+        self.assertIn("Open real local workspace", page)
+        self.assertIn("http://127.0.0.1:8765/live.html", page)
 
     def test_job_requires_repository_and_task(self):
         store = JobStore()
