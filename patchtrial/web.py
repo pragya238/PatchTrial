@@ -39,6 +39,21 @@ class JobStore:
     def __init__(self):
         self.jobs: dict[str, Job] = {}
         self.lock = threading.Lock()
+        self.runtime_config: Config | None = None
+
+    def configure(self, payload: dict) -> Config:
+        api_key = str(payload.get("api_key", "")).strip()
+        base_url = str(payload.get("base_url", "")).strip().rstrip("/")
+        model = str(payload.get("model", "")).strip()
+        if not api_key or not base_url or not model:
+            raise ValueError("API key, base URL, and model are required")
+        if not base_url.startswith("https://"):
+            raise ValueError("Base URL must use HTTPS")
+        self.runtime_config = Config(api_key=api_key, base_url=base_url, model=model)
+        return self.runtime_config
+
+    def config(self, *, require_key: bool = True) -> Config:
+        return self.runtime_config or Config.from_env(require_key=require_key)
 
     def create(self, payload: dict) -> Job:
         repo = str(payload.get("repo", "")).strip()
@@ -59,7 +74,7 @@ class JobStore:
     def _run(self, job: Job, payload: dict) -> None:
         job.status = "running"
         try:
-            config = Config.from_env()
+            config = self.config()
             repository = Repository(
                 Path(str(payload["repo"])),
                 output_limit=config.max_output_chars,
@@ -95,10 +110,12 @@ class DashboardHandler(SimpleHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
         if parsed.path == "/api/health":
+            config = self.store.config(require_key=False)
             self._json(200, {
-                "ready": bool(Config.from_env(require_key=False).api_key),
-                "model": Config.from_env(require_key=False).model,
-                "message": "Ready for live runs" if Config.from_env(require_key=False).api_key else "Set AI_API_KEY to enable live runs",
+                "ready": bool(config.api_key),
+                "model": config.model,
+                "base_url": config.base_url,
+                "message": "Ready for live runs" if config.api_key else "Configure a model to enable live runs",
             })
             return
         if parsed.path.startswith("/api/jobs/"):
@@ -108,7 +125,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         super().do_GET()
 
     def do_POST(self):
-        if urlparse(self.path).path != "/api/jobs":
+        route = urlparse(self.path).path
+        if route not in {"/api/jobs", "/api/config"}:
             self._json(404, {"error": "Not found"})
             return
         try:
@@ -118,8 +136,12 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             payload = json.loads(self.rfile.read(length))
             if not isinstance(payload, dict):
                 raise ValueError("Request body must be an object")
-            job = self.store.create(payload)
-            self._json(202, job.public())
+            if route == "/api/config":
+                config = self.store.configure(payload)
+                self._json(200, {"ready": True, "model": config.model, "base_url": config.base_url})
+            else:
+                job = self.store.create(payload)
+                self._json(202, job.public())
         except (ValueError, json.JSONDecodeError) as exc:
             self._json(400, {"error": str(exc)})
 

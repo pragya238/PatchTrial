@@ -28,8 +28,8 @@ class Config:
         if require_key and not api_key:
             raise ConfigError("AI_API_KEY is required")
 
-        base_url = os.getenv("AI_BASE_URL", "https://api.deepseek.com/v1").rstrip("/")
-        model = os.getenv("AI_MODEL", "deepseek-chat")
+        base_url = os.getenv("AI_BASE_URL", "https://api.deepseek.com").rstrip("/")
+        model = os.getenv("AI_MODEL", "deepseek-flash")
         return cls(
             api_key=api_key,
             base_url=base_url,
