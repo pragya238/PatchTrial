@@ -1,0 +1,70 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+import json
+import time
+from typing import Any
+from urllib import error, request
+
+from .config import Config
+
+
+class ModelError(RuntimeError):
+    pass
+
+
+@dataclass(frozen=True)
+class ModelResponse:
+    content: str
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+
+
+class ModelClient:
+    """Minimal OpenAI-compatible client usable with DeepSeek and Qwen gateways."""
+
+    def __init__(self, config: Config):
+        self.config = config
+
+    def complete(self, messages: list[dict[str, str]]) -> ModelResponse:
+        payload = {
+            "model": self.config.model,
+            "messages": messages,
+            "temperature": self.config.temperature,
+            "stream": False,
+        }
+        body = json.dumps(payload).encode("utf-8")
+        endpoint = f"{self.config.base_url}/chat/completions"
+        req = request.Request(
+            endpoint,
+            data=body,
+            method="POST",
+            headers={
+                "Authorization": f"Bearer {self.config.api_key}",
+                "Content-Type": "application/json",
+            },
+        )
+
+        last_error: Exception | None = None
+        for attempt in range(3):
+            try:
+                with request.urlopen(req, timeout=self.config.timeout_seconds) as response:
+                    result = json.loads(response.read().decode("utf-8"))
+                choice = result["choices"][0]["message"]
+                content = choice.get("content") or ""
+                usage = result.get("usage") or {}
+                return ModelResponse(
+                    content=content,
+                    prompt_tokens=int(usage.get("prompt_tokens", 0)),
+                    completion_tokens=int(usage.get("completion_tokens", 0)),
+                )
+            except error.HTTPError as exc:
+                detail = exc.read().decode("utf-8", errors="replace")[:2000]
+                last_error = ModelError(f"model API returned HTTP {exc.code}: {detail}")
+                if exc.code < 500 and exc.code != 429:
+                    break
+            except (error.URLError, TimeoutError, KeyError, IndexError, json.JSONDecodeError) as exc:
+                last_error = exc
+            if attempt < 2:
+                time.sleep(2**attempt)
+        raise ModelError(f"model request failed after retries: {last_error}")
