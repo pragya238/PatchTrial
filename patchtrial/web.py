@@ -60,6 +60,11 @@ class JobStore:
             raise ValueError("API key, base URL, and model are required")
         if provider not in SUPPORTED_PROVIDERS:
             raise ValueError("Unsupported model provider")
+        if provider == "openrouter" and not api_key.startswith("sk-or-"):
+            raise ValueError(
+                "OpenRouter keys begin with 'sk-or-'. Create and copy a key from "
+                "OpenRouter; do not reuse a Gemini or DeepSeek key."
+            )
         if not base_url.startswith("https://"):
             raise ValueError("Base URL must use HTTPS")
         self.runtime_config = Config(
