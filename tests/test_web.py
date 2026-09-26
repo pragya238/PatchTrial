@@ -68,13 +68,16 @@ class WebTests(unittest.TestCase):
 
     def test_public_workspace_has_a_safe_runnable_demo(self):
         page = (Path(__file__).parent.parent / "dashboard" / "dist" / "live.html").read_text()
-        self.assertIn("Browser demo ready · ", page)
+        self.assertIn("Offline sample ready · ", page)
         self.assertIn("function runPublicTrial()", page)
         self.assertIn("if(!isLocal){runPublicTrial();return}", page)
         self.assertNotIn("$('#config').hidden=true", page)
-        self.assertIn("Use selected model in demo", page)
         self.assertNotIn("$('#provider').disabled=true", page)
         self.assertNotIn("$('#model').disabled=true", page)
+        self.assertNotIn("$('#key').disabled=true", page)
+        self.assertIn("Connect model for this tab", page)
+        self.assertIn("Download .patch", page)
+        self.assertIn("git apply patchtrial.patch", page)
         self.assertIn("http://127.0.0.1:8765/live.html", page)
 
     def test_job_requires_repository_and_task(self):
