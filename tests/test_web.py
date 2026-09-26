@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 
 from patchtrial.web import JobStore
 
@@ -49,6 +50,11 @@ class WebTests(unittest.TestCase):
                 "model": "model",
                 "provider": "mystery",
             })
+
+    def test_provider_change_requires_explicit_activation(self):
+        page = (Path(__file__).parent.parent / "dashboard" / "dist" / "live.html").read_text()
+        self.assertIn("Click “Use for this session” to activate", page)
+        self.assertIn("run.disabled=true", page)
 
     def test_job_requires_repository_and_task(self):
         store = JobStore()
