@@ -1,10 +1,12 @@
-.PHONY: setup run ui doctor scorecard test clean demo
+.PHONY: setup run ui doctor scorecard test verify clean demo
 
 PYTHON ?= python3
 VENV ?= .venv
 BIN := $(VENV)/bin
 
 setup:
+	@command -v git >/dev/null || (echo "Git is required" && exit 1)
+	@$(PYTHON) -c 'import sys; assert sys.version_info >= (3, 10), "Python 3.10+ is required"'
 	$(PYTHON) -m venv $(VENV)
 	@echo "PatchTrial uses only the Python standard library; no packages to download."
 
@@ -24,6 +26,9 @@ scorecard:
 
 test:
 	$(BIN)/python -m unittest discover -s tests -v
+
+verify: test demo
+	@echo "PatchTrial verification passed."
 
 demo:
 	$(BIN)/python -m patchtrial.demo

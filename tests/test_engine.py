@@ -6,7 +6,7 @@ import unittest
 
 from patchtrial.config import Config
 from patchtrial.engine import PatchTrialEngine
-from patchtrial.model import ModelResponse
+from patchtrial.model import ModelError, ModelResponse
 from patchtrial.repository import Repository
 
 
@@ -54,6 +54,7 @@ class FakeModel:
             json.dumps({
                 "counterfeits": [{
                     "name": "absolute_values",
+                    "category": "boundary",
                     "hypothesis": "negative operands are handled incorrectly",
                     "patch": COUNTERFEIT_PATCH,
                 }]
@@ -89,11 +90,46 @@ class ReplaceTextModel(FakeModel):
         })
 
 
+class FailingAfterEditModel:
+    def __init__(self):
+        self.calls = 0
+
+    def complete(self, messages):
+        self.calls += 1
+        if self.calls == 1:
+            return ModelResponse(json.dumps({
+                "reason": "edit before simulated provider failure",
+                "action": {"name": "apply_patch", "arguments": {"patch": CANDIDATE_PATCH}},
+            }))
+        raise ModelError("simulated provider outage")
+
+
 def git(root: Path, *args: str) -> None:
     subprocess.run(["git", *args], cwd=root, check=True, capture_output=True, text=True)
 
 
 class EngineIntegrationTests(unittest.TestCase):
+    def test_unexpected_failure_restores_clean_baseline(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            git(root, "init", "-q")
+            git(root, "config", "user.email", "test@example.com")
+            git(root, "config", "user.name", "Test")
+            (root / "calculator.py").write_text("def add(a, b):\n    return a - b\n")
+            git(root, "add", ".")
+            git(root, "commit", "-qm", "initial")
+            engine = PatchTrialEngine(
+                Config(api_key="fake", base_url="https://invalid", model="fake"),
+                Repository(root),
+                FailingAfterEditModel(),
+                test_command="python -m unittest",
+                event=lambda _: None,
+            )
+            with self.assertRaises(ModelError):
+                engine.run("Correct add", root.parent / "failure-proof.json")
+            self.assertEqual(engine.repository.status(), "")
+            self.assertIn("return a - b", (root / "calculator.py").read_text())
+
     def test_exact_text_edit_can_build_candidate_without_diff_generation(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -110,7 +146,7 @@ class EngineIntegrationTests(unittest.TestCase):
             git(root, "add", ".")
             git(root, "commit", "-qm", "initial")
             engine = PatchTrialEngine(
-                Config(api_key="fake", base_url="https://invalid", model="fake"),
+                Config(api_key="fake", base_url="https://invalid", model="fake", min_valid_counterfeits=1, min_fault_categories=1),
                 Repository(root),
                 ReplaceTextModel(),
                 test_command="python -m unittest discover -v",
@@ -234,7 +270,7 @@ class EngineIntegrationTests(unittest.TestCase):
             git(root, "add", ".")
             git(root, "commit", "-qm", "initial")
 
-            config = Config(api_key="fake", base_url="https://invalid", model="fake")
+            config = Config(api_key="fake", base_url="https://invalid", model="fake", min_valid_counterfeits=1, min_fault_categories=1)
             repository = Repository(root)
             engine = PatchTrialEngine(
                 config,
@@ -275,7 +311,7 @@ class EngineIntegrationTests(unittest.TestCase):
             git(root, "add", ".")
             git(root, "commit", "-qm", "initial")
 
-            config = Config(api_key="fake", base_url="https://invalid", model="fake")
+            config = Config(api_key="fake", base_url="https://invalid", model="fake", min_valid_counterfeits=1, min_fault_categories=1)
             engine = PatchTrialEngine(
                 config,
                 Repository(root),

@@ -8,6 +8,8 @@ import shlex
 import subprocess
 import sys
 import tempfile
+import time
+import json
 
 
 IGNORED_DIRS = {
@@ -17,7 +19,8 @@ IGNORED_DIRS = {
 
 ALLOWED_COMMANDS = {
     "python", "python3", "pytest", "ruff", "mypy", "npm", "pnpm", "yarn",
-    "node", "go", "cargo", "make", "gradle", "./gradlew", "mvn",
+    "node", "go", "cargo", "make", "gradle", "./gradlew", "mvn", "tox", "nox",
+    "bun", "deno", "dotnet", "uv",
 }
 
 
@@ -31,6 +34,7 @@ class CommandResult:
     returncode: int
     stdout: str
     stderr: str
+    duration_seconds: float = 0.0
 
     @property
     def ok(self) -> bool:
@@ -42,6 +46,7 @@ class Repository:
         self.root = root.resolve()
         self.output_limit = output_limit
         self.timeout = timeout
+        self.command_log: list[dict] = []
         if not self.root.is_dir():
             raise RepositoryError(f"repository does not exist: {self.root}")
 
@@ -176,6 +181,12 @@ class Repository:
     def status(self) -> str:
         return self._run(["git", "status", "--short"], enforce_allowlist=False).stdout
 
+    def head_commit(self) -> str:
+        result = self._run(["git", "rev-parse", "HEAD"], enforce_allowlist=False)
+        if not result.ok:
+            raise RepositoryError(result.stderr or "could not read baseline commit")
+        return result.stdout.strip()
+
     def run_command(self, command: str) -> CommandResult:
         try:
             args = shlex.split(command)
@@ -188,10 +199,31 @@ class Repository:
         return self._run(args, enforce_allowlist=True)
 
     def detect_test_command(self) -> str:
+        pyproject = self.root / "pyproject.toml"
+        if pyproject.exists():
+            content = pyproject.read_text(encoding="utf-8", errors="replace").lower()
+            if "pytest" in content or (self.root / "pytest.ini").exists() or (self.root / "conftest.py").exists():
+                return "python -m pytest -q"
+            if (self.root / "tests").exists():
+                return "python -m unittest discover -s tests -v"
+        package = self.root / "package.json"
+        if package.exists():
+            try:
+                scripts = json.loads(package.read_text(encoding="utf-8")).get("scripts", {})
+            except (json.JSONDecodeError, OSError):
+                scripts = {}
+            if scripts.get("test"):
+                if (self.root / "pnpm-lock.yaml").exists():
+                    return "pnpm test"
+                if (self.root / "yarn.lock").exists():
+                    return "yarn test"
+                if (self.root / "bun.lockb").exists() or (self.root / "bun.lock").exists():
+                    return "bun test"
+                return "npm test"
         candidates = [
-            ("pyproject.toml", "python -m unittest discover -v"),
-            ("pytest.ini", "pytest -q"),
-            ("package.json", "npm test -- --runInBand"),
+            ("pytest.ini", "python -m pytest -q"),
+            ("tox.ini", "tox"),
+            ("noxfile.py", "nox"),
             ("go.mod", "go test ./..."),
             ("Cargo.toml", "cargo test"),
             ("pom.xml", "mvn test"),
@@ -200,8 +232,6 @@ class Repository:
         ]
         for filename, command in candidates:
             if (self.root / filename).exists():
-                if filename == "pyproject.toml" and (self.root / "tests").exists():
-                    return "python -m unittest discover -s tests -v"
                 return command
         raise RepositoryError("could not detect a test command; provide one with --test-command")
 
@@ -216,6 +246,7 @@ class Repository:
                 raise RepositoryError(f"local command is not executable: {executable}")
         environment = os.environ.copy()
         environment.pop("AI_API_KEY", None)
+        started = time.monotonic()
         try:
             completed = subprocess.run(
                 args,
@@ -227,11 +258,35 @@ class Repository:
             )
             stdout = _truncate(completed.stdout, self.output_limit)
             stderr = _truncate(completed.stderr, self.output_limit)
-            return CommandResult(shlex.join(args), completed.returncode, stdout, stderr)
+            result = CommandResult(
+                shlex.join(args), completed.returncode, stdout, stderr,
+                round(time.monotonic() - started, 4),
+            )
+            if enforce_allowlist:
+                self.command_log.append({
+                    "command": result.command,
+                    "returncode": result.returncode,
+                    "duration_seconds": result.duration_seconds,
+                    "stdout_tail": result.stdout[-2000:],
+                    "stderr_tail": result.stderr[-2000:],
+                })
+            return result
         except subprocess.TimeoutExpired as exc:
             stdout = _truncate(_as_text(exc.stdout), self.output_limit)
             stderr = _truncate(_as_text(exc.stderr), self.output_limit)
-            return CommandResult(shlex.join(args), 124, stdout, f"{stderr}\nCommand timed out")
+            result = CommandResult(
+                shlex.join(args), 124, stdout, f"{stderr}\nCommand timed out",
+                round(time.monotonic() - started, 4),
+            )
+            if enforce_allowlist:
+                self.command_log.append({
+                    "command": result.command,
+                    "returncode": 124,
+                    "duration_seconds": result.duration_seconds,
+                    "stdout_tail": result.stdout[-2000:],
+                    "stderr_tail": result.stderr[-2000:],
+                })
+            return result
 
 
 def _truncate(value: str, limit: int) -> str:

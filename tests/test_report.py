@@ -27,6 +27,15 @@ class ReportTests(unittest.TestCase):
         self.assertEqual(payload["verdict"], "ACCEPTED")
         self.assertIn("patch_survival_score", payload)
 
+    def test_confidence_penalizes_too_little_or_repetitive_evidence(self):
+        report = ProofReport(
+            task="x", model="m", test_command="make test",
+            min_valid_counterfeits=3, min_fault_categories=2,
+        )
+        report.trials = [TrialResult("a", "fault", True, True, 1, category="boundary")]
+        self.assertEqual(report.survival_score, 100.0)
+        self.assertLess(report.evidence_confidence, 20.0)
+
 
 if __name__ == "__main__":
     unittest.main()

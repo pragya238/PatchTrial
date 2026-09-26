@@ -33,8 +33,15 @@ class ConfigTests(unittest.TestCase):
         }
         with patch.dict(os.environ, values, clear=True):
             args = build_parser().parse_args(["--task", "fix it"])
-        self.assertEqual(args.repo, Path("/tmp/example-target"))
+        self.assertEqual(args.repo, "/tmp/example-target")
         self.assertEqual(args.test_command, "make verify")
+
+    def test_qwen_provider_has_a_code_model_preset(self):
+        with patch.dict(os.environ, {"AI_API_KEY": "secret", "AI_PROVIDER": "qwen"}, clear=True):
+            config = Config.from_env()
+        self.assertEqual(config.provider, "qwen")
+        self.assertEqual(config.model, "qwen3-coder-plus")
+        self.assertIn("dashscope-intl", config.base_url)
 
 
 if __name__ == "__main__":

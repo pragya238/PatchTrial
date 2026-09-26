@@ -43,6 +43,20 @@ runtime configuration.
 
 ## Acceptance semantics
 
-Passing candidate tests is necessary but insufficient. `ACCEPTED` requires at least one valid
-counterfeit and zero surviving valid counterfeits. Invalid generated patches are excluded, never
-counted as detected. When tests are strengthened, only recognized test paths may change.
+Passing candidate tests is necessary but insufficient. `ACCEPTED` requires zero surviving valid
+counterfeits plus a configurable minimum quantity and fault-category diversity (defaults: three
+valid counterfeits across two categories). Invalid generated patches are excluded, never counted
+as detected. When tests are strengthened, only recognized test paths may change. Kill rate and
+evidence confidence are reported separately.
+
+## Failure atomicity
+
+The clean Git commit is a transaction boundary. Any unexpected model, protocol, command, or patch
+failure restores tracked and untracked changes to that boundary. CLI runs also restore completed
+but non-accepted candidates. Only a fully `ACCEPTED` candidate is intentionally left in place.
+
+## Proof chain
+
+The machine-readable report binds the result to a baseline commit and candidate-diff SHA-256. It
+records model configuration, evidence thresholds, test outputs, command timings, trials, categories,
+tokens, and strengthening decisions without recording the API credential.

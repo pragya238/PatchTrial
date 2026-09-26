@@ -21,13 +21,31 @@ CANDIDATE = """diff --git a/pricing.py b/pricing.py
 +    return price * (1 - percent / 100)
 """
 
-COUNTERFEIT = """diff --git a/pricing.py b/pricing.py
+COUNTERFEIT_ABS = """diff --git a/pricing.py b/pricing.py
 --- a/pricing.py
 +++ b/pricing.py
 @@ -1,2 +1,2 @@
  def discounted(price, percent):
 -    return price * (1 - percent / 100)
 +    return abs(price) * (1 - percent / 100)
+"""
+
+COUNTERFEIT_CLAMP = """diff --git a/pricing.py b/pricing.py
+--- a/pricing.py
++++ b/pricing.py
+@@ -1,2 +1,2 @@
+ def discounted(price, percent):
+-    return price * (1 - percent / 100)
++    return max(price, 0) * (1 - percent / 100)
+"""
+
+COUNTERFEIT_SKIP_CREDIT = """diff --git a/pricing.py b/pricing.py
+--- a/pricing.py
++++ b/pricing.py
+@@ -1,2 +1,2 @@
+ def discounted(price, percent):
+-    return price * (1 - percent / 100)
++    return price if price < 0 else price * (1 - percent / 100)
 """
 
 STRONGER_TEST = """diff --git a/test_pricing.py b/test_pricing.py
@@ -47,7 +65,11 @@ class DemoModel:
         self.responses = [
             {"reason": "Implement percentage discount", "action": {"name": "apply_patch", "arguments": {"patch": CANDIDATE}}},
             {"reason": "Candidate ready", "action": {"name": "finish", "arguments": {}}},
-            {"counterfeits": [{"name": "absolute_credit", "hypothesis": "negative credits lose their sign", "patch": COUNTERFEIT}]},
+            {"counterfeits": [
+                {"name": "absolute_credit", "category": "state", "hypothesis": "negative credits lose their sign", "patch": COUNTERFEIT_ABS},
+                {"name": "clamped_credit", "category": "boundary", "hypothesis": "negative credits are clamped to zero", "patch": COUNTERFEIT_CLAMP},
+                {"name": "credit_not_discounted", "category": "partial", "hypothesis": "discount is skipped for credits", "patch": COUNTERFEIT_SKIP_CREDIT},
+            ]},
             {"patch": STRONGER_TEST, "rationale": "negative input distinguishes the counterfeit"},
         ]
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+import re
 import time
 from typing import Any
 from urllib import error, request
@@ -64,7 +65,7 @@ class ModelClient:
         )
 
         last_error: Exception | None = None
-        for attempt in range(3):
+        for attempt in range(self.config.max_api_retries):
             try:
                 with request.urlopen(req, timeout=self.config.timeout_seconds) as response:
                     result = json.loads(response.read().decode("utf-8"))
@@ -81,8 +82,23 @@ class ModelClient:
                 last_error = ModelError(f"model API returned HTTP {exc.code}: {detail}")
                 if exc.code < 500 and exc.code != 429:
                     break
+                delay = _retry_delay(exc, detail, attempt)
             except (error.URLError, TimeoutError, KeyError, IndexError, json.JSONDecodeError) as exc:
                 last_error = exc
-            if attempt < 2:
-                time.sleep(2**attempt)
+                delay = min(16, 2**attempt)
+            if attempt < self.config.max_api_retries - 1:
+                time.sleep(delay)
         raise ModelError(f"model request failed after retries: {last_error}")
+
+
+def _retry_delay(exc: error.HTTPError, detail: str, attempt: int) -> float:
+    header = exc.headers.get("Retry-After") if exc.headers else None
+    if header:
+        try:
+            return min(60.0, max(0.0, float(header)))
+        except ValueError:
+            pass
+    match = re.search(r'"retry_after_seconds(?:_raw)?"\s*:\s*(\d+(?:\.\d+)?)', detail)
+    if match:
+        return min(60.0, float(match.group(1)))
+    return min(16.0, float(2**attempt))

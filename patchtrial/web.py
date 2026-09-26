@@ -120,10 +120,15 @@ class JobStore:
             )
             run = engine.run(str(payload["task"]).strip(), report_path)
             proof = json.loads(report_path.read_text(encoding="utf-8"))
+            restored = False
+            if run.report.verdict != "ACCEPTED":
+                repository.restore_clean()
+                restored = True
             job.result = {
                 "proof": proof,
                 "diff": run.candidate_diff,
                 "report_path": str(report_path),
+                "repository_restored": restored,
             }
             job.status = "complete"
         except (ConfigError, ModelError, RepositoryError, OSError, ValueError) as exc:

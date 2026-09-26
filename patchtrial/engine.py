@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -49,6 +50,14 @@ class PatchTrialEngine:
         self.patch_failures = 0
 
     def run(self, task: str, report_path: Path) -> RunResult:
+        """Run atomically: any unexpected failure restores the clean baseline."""
+        try:
+            return self._run(task, report_path)
+        except Exception:
+            self.repository.restore_clean()
+            raise
+
+    def _run(self, task: str, report_path: Path) -> RunResult:
         initial_status = self.repository.status().strip()
         if initial_status:
             raise RepositoryError(
@@ -56,7 +65,17 @@ class PatchTrialEngine:
                 f"current status:\n{initial_status}"
             )
 
-        report = ProofReport(task=task, model=self.config.model, test_command=self.test_command)
+        report = ProofReport(
+            task=task,
+            model=self.config.model,
+            test_command=self.test_command,
+            provider=self.config.provider,
+            base_url=self.config.base_url,
+            temperature=self.config.temperature,
+            baseline_commit=self.repository.head_commit(),
+            min_valid_counterfeits=self.config.min_valid_counterfeits,
+            min_fault_categories=self.config.min_fault_categories,
+        )
         self.event("[1/5] Mapping repository")
         repository_map = self.repository.list_files(limit=250)
 
@@ -68,10 +87,13 @@ class PatchTrialEngine:
 
         report.baseline_reproduced = self.reproduction_recorded
         report.changed_files = _changed_files(candidate_diff)
+        report.candidate_diff_sha256 = hashlib.sha256(candidate_diff.encode("utf-8")).hexdigest()
 
         self.event("[3/5] Verifying candidate")
         candidate_test = self.repository.run_command(self.test_command)
         report.candidate_tests_passed = candidate_test.ok
+        report.candidate_test_output = (candidate_test.stdout + "\n" + candidate_test.stderr)[-8000:]
+        report.candidate_test_duration_seconds = candidate_test.duration_seconds
         if not candidate_test.ok:
             report.verdict = "REJECTED_CANDIDATE_TESTS_FAILED"
             self._finalize_report(report, report_path)
@@ -100,6 +122,9 @@ class PatchTrialEngine:
                         )
                         candidate_diff = self.repository.diff()
                         report.changed_files = _changed_files(candidate_diff)
+                        report.candidate_diff_sha256 = hashlib.sha256(
+                            candidate_diff.encode("utf-8")
+                        ).hexdigest()
                     else:
                         self.event("  stronger test rejected: it fails for the correct candidate")
                         removed = self.repository.apply_patch(strengthening_patch, reverse=True)
@@ -113,6 +138,10 @@ class PatchTrialEngine:
 
         if report.valid_trials == 0:
             report.verdict = "INCONCLUSIVE_NO_VALID_COUNTERFEITS"
+        elif report.valid_trials < self.config.min_valid_counterfeits:
+            report.verdict = "INCONCLUSIVE_INSUFFICIENT_COUNTERFEITS"
+        elif len(report.fault_categories) < self.config.min_fault_categories:
+            report.verdict = "INCONCLUSIVE_INSUFFICIENT_DIVERSITY"
         elif report.killed_trials == report.valid_trials:
             report.verdict = "ACCEPTED"
         else:
@@ -235,11 +264,17 @@ class PatchTrialEngine:
                 continue
             name = str(item.get("name", "unnamed"))[:80]
             hypothesis = str(item.get("hypothesis", ""))[:500]
+            category = str(item.get("category", "unspecified")).strip().lower()[:80]
             patch = str(item.get("patch", ""))
             if patch and "diff --git" in patch:
                 patch = _production_only_patch(patch)
                 if patch:
-                    counterfeits.append({"name": name, "hypothesis": hypothesis, "patch": patch})
+                    counterfeits.append({
+                        "name": name,
+                        "hypothesis": hypothesis,
+                        "category": category or "unspecified",
+                        "patch": patch,
+                    })
         return counterfeits
 
     def _run_trials(
@@ -262,6 +297,7 @@ class PatchTrialEngine:
                         killed=False,
                         test_returncode=None,
                         detail=f"invalid patch: {applied.stderr or applied.stdout}",
+                        category=counterfeit["category"],
                     ))
                     continue
                 counterfeit_applied = True
@@ -273,6 +309,7 @@ class PatchTrialEngine:
                     killed=not test.ok,
                     test_returncode=test.returncode,
                     detail=(test.stderr or test.stdout)[-2000:],
+                    category=counterfeit["category"],
                 ))
             finally:
                 if counterfeit_applied:
@@ -361,6 +398,7 @@ class PatchTrialEngine:
                     updated.append(TrialResult(
                         trial.name, trial.hypothesis, False, False, None,
                         f"counterfeit stopped applying during strengthened trial: {applied.stderr}",
+                        trial.category,
                     ))
                     continue
                 counterfeit_applied = True
@@ -372,6 +410,7 @@ class PatchTrialEngine:
                     not test.ok,
                     test.returncode,
                     (test.stderr or test.stdout)[-2000:],
+                    trial.category,
                 ))
             finally:
                 if counterfeit_applied:
@@ -424,6 +463,7 @@ class PatchTrialEngine:
     def _finalize_report(self, report: ProofReport, report_path: Path) -> None:
         report.prompt_tokens = self.prompt_tokens
         report.completion_tokens = self.completion_tokens
+        report.command_log = list(self.repository.command_log)
         report.write(report_path)
 
 

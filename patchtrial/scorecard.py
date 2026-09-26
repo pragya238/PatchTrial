@@ -11,6 +11,12 @@ def aggregate(paths: list[Path]) -> dict:
     killed = sum(int(report.get("killed_trials", 0)) for report in reports)
     accepted = sum(report.get("verdict") == "ACCEPTED" for report in reports)
     strengthened = sum(bool(report.get("strengthening_applied")) for report in reports)
+    inconclusive = sum(str(report.get("verdict", "")).startswith("INCONCLUSIVE") for report in reports)
+    durations = [
+        sum(float(item.get("duration_seconds", 0)) for item in report.get("command_log", []))
+        for report in reports
+    ]
+    confidence = [float(report.get("evidence_confidence", 0)) for report in reports]
     return {
         "runs": len(reports),
         "accepted": accepted,
@@ -19,6 +25,10 @@ def aggregate(paths: list[Path]) -> dict:
         "counterfeits_killed": killed,
         "counterfeit_kill_rate": 100 * killed / valid if valid else 0,
         "runs_strengthened": strengthened,
+        "inconclusive": inconclusive,
+        "average_evidence_confidence": sum(confidence) / len(confidence) if confidence else 0,
+        "command_runtime_seconds": sum(durations),
+        "restoration_failures": sum(bool(report.get("restoration_failed")) for report in reports),
         "prompt_tokens": sum(int(report.get("prompt_tokens", 0)) for report in reports),
         "completion_tokens": sum(int(report.get("completion_tokens", 0)) for report in reports),
     }
@@ -37,6 +47,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  Runs accepted:       {result['accepted']}/{result['runs']} ({result['acceptance_rate']:.0f}%)")
         print(f"  Counterfeits killed: {result['counterfeits_killed']}/{result['valid_counterfeits']} ({result['counterfeit_kill_rate']:.0f}%)")
         print(f"  Evidence strengthened in {result['runs_strengthened']} run(s)")
+        print(f"  Inconclusive runs:    {result['inconclusive']}")
+        print(f"  Avg. confidence:      {result['average_evidence_confidence']:.0f}%")
+        print(f"  Command runtime:      {result['command_runtime_seconds']:.1f}s")
+        print(f"  Restoration failures:{result['restoration_failures']:2d}")
         print(f"  Model tokens: {result['prompt_tokens'] + result['completion_tokens']}")
     return 0
 

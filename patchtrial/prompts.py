@@ -67,11 +67,13 @@ lines must therefore match the correct candidate implementation, not the origina
 Reject trivial counterfeits such as deleting all implementation, introducing syntax errors, disabling
 tests, or making unrelated changes. Prefer boundary errors, lost state, incomplete compatibility,
 incorrect exception behavior, missing validation, and partial implementations.
+Maximize diversity: cover distinct categories rather than several variants of the same mistake.
+Use a concise category such as boundary, state, compatibility, validation, exception, or partial.
 
 Return JSON only:
 {{
   "counterfeits": [
-    {{"name": "short_name", "hypothesis": "specific wrong behavior", "patch": "git diff"}}
+    {{"name": "short_name", "category": "boundary", "hypothesis": "specific wrong behavior", "patch": "git diff"}}
   ]
 }}
 

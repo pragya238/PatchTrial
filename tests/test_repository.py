@@ -113,6 +113,19 @@ diff --git a/app.py b/app.py
         self.assertIn("app.py:1:VALUE", self.repo.search_code("VALUE"))
         self.assertIn("VALUE = 1", self.repo.read_file("app.py"))
 
+    def test_detects_pytest_from_pyproject(self):
+        (self.root / "pyproject.toml").write_text(
+            '[project]\ndependencies = ["pytest"]\n', encoding="utf-8"
+        )
+        (self.root / "tests").mkdir()
+        self.assertEqual(self.repo.detect_test_command(), "python -m pytest -q")
+
+    def test_uses_declared_javascript_test_script_without_jest_flags(self):
+        (self.root / "package.json").write_text(
+            '{"scripts":{"test":"vitest run"}}\n', encoding="utf-8"
+        )
+        self.assertEqual(self.repo.detect_test_command(), "npm test")
+
 
 if __name__ == "__main__":
     unittest.main()

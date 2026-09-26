@@ -7,7 +7,7 @@ const $=s=>document.querySelector(s),form=$('#form'),run=$('#run'),events=$('#ev
 async function health(){try{const r=await fetch('/api/health'),d=await r.json();$('#health').textContent=d.message+' · '+d.model;$('#dot').classList.toggle('ready',d.ready);run.disabled=!d.ready}catch{$('#health').textContent='Open this page with “make ui” for live runs';run.disabled=true}}
 const providers={
 deepseek:{base:'https://api.deepseek.com',model:'deepseek-flash',help:"DeepSeek's official OpenAI-compatible endpoint."},
-qwen:{base:'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',model:'qwen3.8-flash',help:'Alibaba Model Studio Singapore endpoint. The key and endpoint region must match.'},
+qwen:{base:'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',model:'qwen3-coder-plus',help:'Alibaba Model Studio international endpoint. The key and endpoint region must match.'},
 openrouter:{base:'https://openrouter.ai/api/v1',model:'openrouter/free',help:'Routes each request to an available free model. Free-model availability and limits can change.'},
 groq:{base:'https://api.groq.com/openai/v1',model:'openai/gpt-oss-20b',help:'Groq OpenAI-compatible endpoint. Developer-tier limits are controlled by Groq.'},
 gemini:{base:'https://generativelanguage.googleapis.com/v1beta/openai',model:'gemini-3.8-flash',help:'Gemini OpenAI-compatible endpoint. Free-tier availability depends on your AI Studio project.'},

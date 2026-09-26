@@ -19,10 +19,14 @@ The MVP implements the full first-pass workflow:
 4. Apply changes only through validated Git unified diffs.
 5. Run the repository's final verification command.
 6. Generate issue-specific counterfeit patches.
-7. Restore the baseline and run every counterfeit in isolation.
+7. Run every candidate-relative counterfeit in isolation.
 8. Ask for a focused test-only patch when a counterfeit survives.
 9. Verify the stronger test against both the correct and counterfeit implementations.
 10. Restore the strengthened correct candidate and write `patchtrial-proof.json`.
+
+Acceptance is deliberately conservative: by default PatchTrial requires at least **three valid
+counterfeits spanning two fault categories**. A perfect 1/1 kill rate is reported as insufficient
+evidence rather than misleadingly presented as high confidence.
 
 For weaker or inexpensive models, the implementation loop also exposes exact-text replacement and
 safe new-file creation tools. Malformed diff hunk counts are repaired automatically, repeated bad
@@ -55,12 +59,17 @@ The API key is always read from the environment and must never be committed.
 
 ```bash
 export AI_API_KEY="..."
-export AI_BASE_URL="https://api.deepseek.com/v1"
-export AI_MODEL="deepseek-chat"
+export AI_BASE_URL="https://api.deepseek.com"
+export AI_MODEL="deepseek-flash"
+export AI_PROVIDER="deepseek"
 ```
 
 For a Qwen-compatible gateway, change `AI_BASE_URL` and `AI_MODEL` to values supplied by the
 organizers. `AI_API_KEY` is the only secret.
+
+If the organizers use the standard international Alibaba endpoint, `AI_PROVIDER=qwen` selects the
+`qwen3-coder-plus` preset. Explicit `AI_BASE_URL` and `AI_MODEL` values always take precedence, so
+the same build works with an evaluator-owned gateway.
 
 The local workspace also includes presets for OpenRouter, Groq Cloud, and Google Gemini. All use
 their official OpenAI-compatible chat-completions endpoints, so no provider SDK is required.
@@ -74,6 +83,9 @@ Optional controls:
 |---|---:|---|
 | `PATCHTRIAL_MAX_STEPS` | 24 | Maximum implementation actions |
 | `PATCHTRIAL_MAX_COUNTERFEITS` | 5 | Maximum adversarial patches |
+| `PATCHTRIAL_MIN_VALID_COUNTERFEITS` | 3 | Evidence quantity required for acceptance |
+| `PATCHTRIAL_MIN_FAULT_CATEGORIES` | 2 | Evidence diversity required for acceptance |
+| `PATCHTRIAL_MAX_API_RETRIES` | 5 | Provider retries; honors rate-limit retry hints |
 | `PATCHTRIAL_API_TIMEOUT` | 120 | Model request timeout in seconds |
 | `PATCHTRIAL_COMMAND_TIMEOUT` | 180 | Tool command timeout in seconds |
 | `PATCHTRIAL_MAX_OUTPUT_CHARS` | 16000 | Per-command context limit |
@@ -113,6 +125,11 @@ export TASK_FILE="/path/to/issue.txt"
 make run
 ```
 
+`TARGET_REPO` may also be an HTTPS Git URL. PatchTrial clones remote targets into an isolated
+temporary workspace and prints its location. A target is required: the harness never silently
+edits its own repository. Unsuccessful or interrupted engine runs restore the target to its clean
+starting commit; only an `ACCEPTED` run leaves the candidate patch in place.
+
 `make run` accepts task text interactively or from stdin. For explicit options:
 
 ```bash
@@ -135,9 +152,14 @@ detect the project type. Validate local configuration without an API call using:
 - `NEEDS_STRONGER_TESTS`: at least one plausible counterfeit survives.
 - `REJECTED_CANDIDATE_TESTS_FAILED`: the proposed solution fails final verification.
 - `INCONCLUSIVE_NO_VALID_COUNTERFEITS`: the adversarial patches could not be evaluated.
+- `INCONCLUSIVE_INSUFFICIENT_COUNTERFEITS`: too few valid trials for credible acceptance.
+- `INCONCLUSIVE_INSUFFICIENT_DIVERSITY`: the trials repeat too few fault categories.
 
 Invalid counterfeits—patches that do not apply—are excluded rather than being falsely counted as
 detected.
+
+The proof artifact separates **kill rate** from **evidence confidence**. Confidence is reduced when
+trial quantity or fault diversity is below policy, even when every available counterfeit is killed.
 
 ## Security boundaries
 
@@ -146,6 +168,7 @@ detected.
 - File modifications must be complete Git unified diffs and pass `git apply --check`.
 - Tool output is truncated before being returned to the model.
 - The API credential is never inserted into prompts or command arguments.
+- Every unexpected engine failure triggers a tested clean-baseline rollback.
 
 The allowlist is a safety layer, not a complete hostile-code sandbox. Repository tests can execute
 repository code, so official evaluation should still use an isolated environment.
@@ -167,6 +190,16 @@ After several evaluation runs, aggregate their proof artifacts:
 ```bash
 make scorecard REPORTS="run-1.json run-2.json run-3.json"
 ```
+
+The scorecard reports acceptance, inconclusive runs, counterfeit kill rate, average confidence,
+command runtime, token usage, and restoration failures. See `docs/EVALUATION.md` for the required
+DeepSeek/Qwen comparison protocol; no model-performance claim is made without recorded runs.
+
+## Proof artifact
+
+Each report includes the baseline commit, candidate patch SHA-256, provider/model configuration
+(never the key), evidence policy, candidate output and duration, every valid or invalid trial,
+fault-category diversity, token usage, and an auditable command log with timings and output tails.
 
 ## Evidence strengthening
 

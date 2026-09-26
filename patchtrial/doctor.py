@@ -23,6 +23,12 @@ def inspect(repo_path: Path) -> dict:
     add("API key", bool(config.api_key), "AI_API_KEY is set" if config.api_key else "AI_API_KEY is missing")
     add("Model", bool(config.model), config.model)
     add("Endpoint", config.base_url.startswith(("http://", "https://")), config.base_url)
+    add(
+        "Evidence policy",
+        config.min_valid_counterfeits >= 2 and config.min_fault_categories >= 2,
+        f"minimum {config.min_valid_counterfeits} valid counterfeits across "
+        f"{config.min_fault_categories} categories",
+    )
 
     try:
         repository = Repository(repo_path)
