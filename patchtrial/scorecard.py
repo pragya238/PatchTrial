@@ -17,6 +17,20 @@ def aggregate(paths: list[Path]) -> dict:
         for report in reports
     ]
     confidence = [float(report.get("evidence_confidence", 0)) for report in reports]
+    hidden_results = [report.get("hidden_tests_passed") for report in reports if "hidden_tests_passed" in report]
+    groups: dict[str, dict[str, int]] = {}
+    for report in reports:
+        key = "/".join(
+            [
+                str(report.get("provider", "unknown")),
+                str(report.get("model", "unknown")),
+                str(report.get("evaluation_variant", "unspecified")),
+            ]
+        )
+        group = groups.setdefault(key, {"runs": 0, "hidden_passed": 0, "accepted": 0})
+        group["runs"] += 1
+        group["hidden_passed"] += int(report.get("hidden_tests_passed") is True)
+        group["accepted"] += int(report.get("verdict") == "ACCEPTED")
     return {
         "runs": len(reports),
         "accepted": accepted,
@@ -31,6 +45,13 @@ def aggregate(paths: list[Path]) -> dict:
         "restoration_failures": sum(bool(report.get("restoration_failed")) for report in reports),
         "prompt_tokens": sum(int(report.get("prompt_tokens", 0)) for report in reports),
         "completion_tokens": sum(int(report.get("completion_tokens", 0)) for report in reports),
+        "hidden_test_runs": len(hidden_results),
+        "hidden_tests_passed": sum(value is True for value in hidden_results),
+        "hidden_test_pass_rate": (
+            100 * sum(value is True for value in hidden_results) / len(hidden_results)
+            if hidden_results else 0
+        ),
+        "by_model_variant": groups,
     }
 
 
@@ -52,6 +73,18 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  Command runtime:      {result['command_runtime_seconds']:.1f}s")
         print(f"  Restoration failures:{result['restoration_failures']:2d}")
         print(f"  Model tokens: {result['prompt_tokens'] + result['completion_tokens']}")
+        if result["hidden_test_runs"]:
+            print(
+                f"  Hidden tests passed: {result['hidden_tests_passed']}/"
+                f"{result['hidden_test_runs']} ({result['hidden_test_pass_rate']:.0f}%)"
+            )
+        if result["by_model_variant"]:
+            print("\n  Model / variant breakdown")
+            for name, group in sorted(result["by_model_variant"].items()):
+                print(
+                    f"    {name}: hidden {group['hidden_passed']}/{group['runs']}, "
+                    f"accepted {group['accepted']}/{group['runs']}"
+                )
     return 0
 
 

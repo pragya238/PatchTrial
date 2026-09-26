@@ -3,7 +3,7 @@ import unittest
 from unittest.mock import patch
 
 from patchtrial.config import Config
-from patchtrial.model import ModelClient, OPENROUTER_FREE_FALLBACKS
+from patchtrial.model import ModelClient, OPENROUTER_FREE_FALLBACKS, _redact_secret
 
 
 class FakeHTTPResponse:
@@ -21,6 +21,12 @@ class FakeHTTPResponse:
 
 
 class ModelClientTests(unittest.TestCase):
+    def test_secret_redaction(self):
+        self.assertEqual(
+            _redact_secret("provider echoed sk-sensitive-value", "sk-sensitive-value"),
+            "provider echoed [REDACTED]",
+        )
+
     def test_openai_compatible_transport(self):
         captured = {}
         payload = {

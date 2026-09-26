@@ -109,6 +109,42 @@ def git(root: Path, *args: str) -> None:
 
 
 class EngineIntegrationTests(unittest.TestCase):
+    def test_candidate_only_mode_stops_before_counterfeit_generation(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            git(root, "init", "-q")
+            git(root, "config", "user.email", "test@example.com")
+            git(root, "config", "user.name", "Test")
+            (root / "calculator.py").write_text("def add(a, b):\n    return a - b\n")
+            (root / "test_calculator.py").write_text(
+                "import unittest\nfrom calculator import add\n\n"
+                "class Tests(unittest.TestCase):\n"
+                "    def test_add(self):\n"
+                "        self.assertEqual(add(2, 3), 5)\n"
+            )
+            git(root, "add", ".")
+            git(root, "commit", "-qm", "initial")
+            model = FakeModel()
+            engine = PatchTrialEngine(
+                Config(
+                    api_key="fake",
+                    base_url="https://invalid",
+                    model="fake",
+                    stop_after_candidate=True,
+                ),
+                Repository(root),
+                model,
+                test_command="python -m unittest discover -v",
+                event=lambda _: None,
+            )
+            report_path = Path(temp).parent / f"{root.name}-baseline-proof.json"
+            try:
+                result = engine.run("Correct add", report_path)
+                self.assertEqual(result.report.verdict, "BASELINE_CANDIDATE_PASSED")
+                self.assertEqual(len(model.responses), 1)
+            finally:
+                report_path.unlink(missing_ok=True)
+
     def test_unexpected_failure_restores_clean_baseline(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

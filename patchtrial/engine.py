@@ -99,6 +99,12 @@ class PatchTrialEngine:
             self._finalize_report(report, report_path)
             return RunResult(report, report_path, candidate_diff)
 
+        if self.config.stop_after_candidate:
+            report.verdict = "BASELINE_CANDIDATE_PASSED"
+            self.event("[4/5] Baseline mode: stopping after candidate verification")
+            self._finalize_report(report, report_path)
+            return RunResult(report, report_path, candidate_diff)
+
         self.event("[4/5] Generating and challenging counterfeit patches")
         counterfeits = self._generate_counterfeits(task, candidate_diff)
         report.trials = self._run_trials(candidate_diff, counterfeits)

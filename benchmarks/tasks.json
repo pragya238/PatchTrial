@@ -1,0 +1,142 @@
+[
+  {
+    "id": "py-negative-discount",
+    "language": "python",
+    "fault_family": "boundary",
+    "task": "Implement percentage discounts without changing the sign of negative credits.",
+    "test_command": "python -m unittest discover -v",
+    "files": {
+      "pricing.py": "def discounted(price, percent):\n    return abs(price) * (1 - percent / 100)\n",
+      "test_pricing.py": "import unittest\nfrom pricing import discounted\n\nclass PricingTests(unittest.TestCase):\n    def test_positive(self):\n        self.assertEqual(discounted(100, 20), 80)\n"
+    },
+    "hidden_files": {
+      "test_hidden.py": "import unittest\nfrom pricing import discounted\n\nclass HiddenTests(unittest.TestCase):\n    def test_negative_credit(self):\n        self.assertEqual(discounted(-100, 20), -80)\n"
+    }
+  },
+  {
+    "id": "py-inclusive-clamp",
+    "language": "python",
+    "fault_family": "boundary",
+    "task": "Clamp values to the inclusive range [low, high], including values above and below both limits.",
+    "test_command": "python -m unittest discover -v",
+    "files": {
+      "ranges.py": "def clamp(value, low, high):\n    return value\n",
+      "test_ranges.py": "import unittest\nfrom ranges import clamp\n\nclass RangeTests(unittest.TestCase):\n    def test_inside(self):\n        self.assertEqual(clamp(5, 0, 10), 5)\n"
+    },
+    "hidden_files": {
+      "test_hidden.py": "import unittest\nfrom ranges import clamp\n\nclass HiddenTests(unittest.TestCase):\n    def test_edges(self):\n        self.assertEqual(clamp(-2, 0, 10), 0)\n        self.assertEqual(clamp(14, 0, 10), 10)\n"
+    }
+  },
+  {
+    "id": "py-preserve-state",
+    "language": "python",
+    "fault_family": "state",
+    "task": "Update one preference without deleting other saved preferences.",
+    "test_command": "python -m unittest discover -v",
+    "files": {
+      "prefs.py": "def set_preference(current, key, value):\n    return {key: value}\n",
+      "test_prefs.py": "import unittest\nfrom prefs import set_preference\n\nclass PreferenceTests(unittest.TestCase):\n    def test_sets_value(self):\n        self.assertEqual(set_preference({}, 'theme', 'dark'), {'theme': 'dark'})\n"
+    },
+    "hidden_files": {
+      "test_hidden.py": "import unittest\nfrom prefs import set_preference\n\nclass HiddenTests(unittest.TestCase):\n    def test_preserves_existing(self):\n        self.assertEqual(set_preference({'lang': 'en'}, 'theme', 'dark'), {'lang': 'en', 'theme': 'dark'})\n"
+    }
+  },
+  {
+    "id": "py-reject-blank-name",
+    "language": "python",
+    "fault_family": "validation",
+    "task": "Normalize a user name and reject values that contain only whitespace.",
+    "test_command": "python -m unittest discover -v",
+    "files": {
+      "users.py": "def normalize_name(value):\n    return value.strip()\n",
+      "test_users.py": "import unittest\nfrom users import normalize_name\n\nclass UserTests(unittest.TestCase):\n    def test_trims(self):\n        self.assertEqual(normalize_name(' Ada '), 'Ada')\n"
+    },
+    "hidden_files": {
+      "test_hidden.py": "import unittest\nfrom users import normalize_name\n\nclass HiddenTests(unittest.TestCase):\n    def test_blank_rejected(self):\n        with self.assertRaises(ValueError):\n            normalize_name('   ')\n"
+    }
+  },
+  {
+    "id": "py-parse-port",
+    "language": "python",
+    "fault_family": "compatibility",
+    "task": "Parse integer or numeric-string ports and reject ports outside 1 through 65535.",
+    "test_command": "python -m unittest discover -v",
+    "files": {
+      "network.py": "def parse_port(value):\n    return int(value)\n",
+      "test_network.py": "import unittest\nfrom network import parse_port\n\nclass NetworkTests(unittest.TestCase):\n    def test_string(self):\n        self.assertEqual(parse_port('8080'), 8080)\n"
+    },
+    "hidden_files": {
+      "test_hidden.py": "import unittest\nfrom network import parse_port\n\nclass HiddenTests(unittest.TestCase):\n    def test_invalid_range(self):\n        with self.assertRaises(ValueError):\n            parse_port('70000')\n"
+    }
+  },
+  {
+    "id": "js-partial-page",
+    "language": "javascript",
+    "fault_family": "boundary",
+    "task": "Return the number of pages needed, including a final partially filled page.",
+    "test_command": "node --test",
+    "files": {
+      "pagination.js": "exports.pageCount = (items, size) => Math.floor(items / size);\n",
+      "pagination.test.js": "const test=require('node:test'); const assert=require('node:assert/strict'); const {pageCount}=require('./pagination');\ntest('full pages',()=>assert.equal(pageCount(20,10),2));\n"
+    },
+    "hidden_files": {
+      "hidden.test.js": "const test=require('node:test'); const assert=require('node:assert/strict'); const {pageCount}=require('./pagination');\ntest('partial page',()=>assert.equal(pageCount(21,10),3));\n"
+    }
+  },
+  {
+    "id": "js-zero-retries",
+    "language": "javascript",
+    "fault_family": "validation",
+    "task": "Honor an explicit retry count of zero instead of replacing it with the default.",
+    "test_command": "node --test",
+    "files": {
+      "options.js": "exports.retries = value => value || 3;\n",
+      "options.test.js": "const test=require('node:test'); const assert=require('node:assert/strict'); const {retries}=require('./options');\ntest('default',()=>assert.equal(retries(undefined),3));\n"
+    },
+    "hidden_files": {
+      "hidden.test.js": "const test=require('node:test'); const assert=require('node:assert/strict'); const {retries}=require('./options');\ntest('zero',()=>assert.equal(retries(0),0));\n"
+    }
+  },
+  {
+    "id": "js-optional-label",
+    "language": "javascript",
+    "fault_family": "compatibility",
+    "task": "Format records that may omit label without producing the text undefined.",
+    "test_command": "node --test",
+    "files": {
+      "format.js": "exports.format = record => `${record.id}: ${record.label}`;\n",
+      "format.test.js": "const test=require('node:test'); const assert=require('node:assert/strict'); const {format}=require('./format');\ntest('label',()=>assert.equal(format({id:2,label:'two'}),'2: two'));\n"
+    },
+    "hidden_files": {
+      "hidden.test.js": "const test=require('node:test'); const assert=require('node:assert/strict'); const {format}=require('./format');\ntest('missing label',()=>assert.equal(format({id:2}),'2'));\n"
+    }
+  },
+  {
+    "id": "js-remove-one",
+    "language": "javascript",
+    "fault_family": "state",
+    "task": "Remove only the requested item while preserving order and all other items.",
+    "test_command": "node --test",
+    "files": {
+      "items.js": "exports.removeItem = (items, target) => items.filter(item => item !== items[0]);\n",
+      "items.test.js": "const test=require('node:test'); const assert=require('node:assert/strict'); const {removeItem}=require('./items');\ntest('first',()=>assert.deepEqual(removeItem(['a','b'],'a'),['b']));\n"
+    },
+    "hidden_files": {
+      "hidden.test.js": "const test=require('node:test'); const assert=require('node:assert/strict'); const {removeItem}=require('./items');\ntest('middle',()=>assert.deepEqual(removeItem(['a','b','c'],'b'),['a','c']));\n"
+    }
+  },
+  {
+    "id": "js-valid-age",
+    "language": "javascript",
+    "fault_family": "partial",
+    "task": "Accept only finite integer ages from 0 through 120 inclusive.",
+    "test_command": "node --test",
+    "files": {
+      "age.js": "exports.isValidAge = age => age >= 0;\n",
+      "age.test.js": "const test=require('node:test'); const assert=require('node:assert/strict'); const {isValidAge}=require('./age');\ntest('normal',()=>assert.equal(isValidAge(32),true));\n"
+    },
+    "hidden_files": {
+      "hidden.test.js": "const test=require('node:test'); const assert=require('node:assert/strict'); const {isValidAge}=require('./age');\ntest('invalid ages',()=>{assert.equal(isValidAge(121),false); assert.equal(isValidAge(2.5),false); assert.equal(isValidAge('20'),false)});\n"
+    }
+  }
+]

@@ -24,6 +24,7 @@ class Config:
     max_output_chars: int = 16_000
     max_context_chars: int = 80_000
     temperature: float = 0.0
+    stop_after_candidate: bool = False
 
     def __post_init__(self) -> None:
         if not self.model.strip():
@@ -73,6 +74,7 @@ class Config:
             max_output_chars=_env_int("PATCHTRIAL_MAX_OUTPUT_CHARS", 16_000),
             max_context_chars=_env_int("PATCHTRIAL_CONTEXT_CHARS", 80_000),
             temperature=float(os.getenv("PATCHTRIAL_TEMPERATURE", "0")),
+            stop_after_candidate=_env_bool("PATCHTRIAL_STOP_AFTER_CANDIDATE", False),
         )
 
 
@@ -87,3 +89,15 @@ def _env_int(name: str, default: int) -> int:
     if value <= 0:
         raise ConfigError(f"{name} must be positive")
     return value
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    normalized = raw.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise ConfigError(f"{name} must be a boolean")

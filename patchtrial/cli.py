@@ -84,7 +84,7 @@ def main(argv: list[str] | None = None) -> int:
             print("Repository restored because the evidence was not sufficient for acceptance.")
         print(result.report.summary())
         print(f"Proof report: {result.report_path}")
-        return 0 if result.report.verdict == "ACCEPTED" else 2
+        return 0 if result.report.verdict in {"ACCEPTED", "BASELINE_CANDIDATE_PASSED"} else 2
     except (ConfigError, ModelError, RepositoryError, OSError) as exc:
         if repository is not None and repository.status().strip():
             try:

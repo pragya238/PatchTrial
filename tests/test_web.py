@@ -79,6 +79,8 @@ class WebTests(unittest.TestCase):
         self.assertIn("Run guided sample — no API key", page)
         self.assertIn("runPublicTrial(true)", page)
         self.assertIn("Download .patch", page)
+        self.assertIn("Evidence inspector", page)
+        self.assertIn("Download proof JSON", page)
         self.assertIn("git apply patchtrial.patch", page)
         self.assertIn("http://127.0.0.1:8765/live.html", page)
 

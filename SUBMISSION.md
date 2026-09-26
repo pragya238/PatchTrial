@@ -38,10 +38,14 @@ cd PatchTrial
 make setup
 make test
 make demo
+make eval-smoke
 ```
 
 The deterministic demo uses no API key and exercises the complete candidate → counterfeits →
 surviving faults → stronger test → accepted-evidence loop.
+
+`make eval-smoke` validates ten starter repositories (five Python and five JavaScript), proving
+that visible tests pass while withheld correctness tests expose the seeded fault.
 
 For an evaluator-provided model and repository:
 
@@ -54,6 +58,16 @@ export TARGET_REPO="/path/or/https-git-url"
 export TASK_FILE="/path/to/issue.txt"
 make run
 ```
+
+For a controlled candidate-only versus full-harness comparison on all benchmark tasks:
+
+```bash
+make eval-matrix
+```
+
+Raw reports and a grouped JSON scorecard are written under `evaluation-results/`. The repository
+does not include invented DeepSeek/Qwen success numbers; evaluator model claims require those raw
+artifacts.
 
 Only `AI_API_KEY` is secret. No code changes or committed configuration are required.
 

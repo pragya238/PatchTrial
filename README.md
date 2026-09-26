@@ -179,6 +179,13 @@ repository code, so official evaluation should still use an isolated environment
 make test
 ```
 
+For the complete judge preflight—including the deterministic demo and all ten withheld-test
+benchmark fixtures—run:
+
+```bash
+make judge
+```
+
 Before evaluation, run the preflight checker against the clean target repository:
 
 ```bash
@@ -190,6 +197,18 @@ After several evaluation runs, aggregate their proof artifacts:
 ```bash
 make scorecard REPORTS="run-1.json run-2.json run-3.json"
 ```
+
+The repository includes five Python and five JavaScript benchmark tasks spanning boundary, state,
+validation, compatibility, and partial-implementation faults. Run the candidate-only baseline and
+full challenge loop on the same configured provider with:
+
+```bash
+make eval-matrix
+```
+
+See `benchmarks/README.md` and `docs/JUDGE_GUIDE.md`. The matrix adds withheld-test outcomes and an
+explicit `evaluation_variant` to every proof, then groups the scorecard by provider, model, and
+variant.
 
 The scorecard reports acceptance, inconclusive runs, counterfeit kill rate, average confidence,
 command runtime, token usage, and restoration failures. See `docs/EVALUATION.md` for the required

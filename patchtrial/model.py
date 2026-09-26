@@ -78,7 +78,10 @@ class ModelClient:
                     completion_tokens=int(usage.get("completion_tokens", 0)),
                 )
             except error.HTTPError as exc:
-                detail = exc.read().decode("utf-8", errors="replace")[:2000]
+                detail = _redact_secret(
+                    exc.read().decode("utf-8", errors="replace")[:2000],
+                    self.config.api_key,
+                )
                 last_error = ModelError(f"model API returned HTTP {exc.code}: {detail}")
                 if exc.code < 500 and exc.code != 429:
                     break
@@ -102,3 +105,9 @@ def _retry_delay(exc: error.HTTPError, detail: str, attempt: int) -> float:
     if match:
         return min(60.0, float(match.group(1)))
     return min(16.0, float(2**attempt))
+
+
+def _redact_secret(value: str, secret: str) -> str:
+    if not secret:
+        return value
+    return value.replace(secret, "[REDACTED]")
