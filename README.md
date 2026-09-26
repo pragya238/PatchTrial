@@ -54,6 +54,12 @@ export AI_MODEL="deepseek-chat"
 For a Qwen-compatible gateway, change `AI_BASE_URL` and `AI_MODEL` to values supplied by the
 organizers. `AI_API_KEY` is the only secret.
 
+The local workspace also includes presets for OpenRouter, Groq Cloud, and Google Gemini. All use
+their official OpenAI-compatible chat-completions endpoints, so no provider SDK is required.
+Choose a provider under **Configure model locally**, paste its API key, and review the editable
+base URL and model before saving. Provider free tiers, quotas, and model availability are managed
+by the providers and may change.
+
 Optional controls:
 
 | Variable | Default | Meaning |

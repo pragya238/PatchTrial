@@ -16,6 +16,16 @@ from .model import ModelClient, ModelError
 from .repository import Repository, RepositoryError
 
 
+SUPPORTED_PROVIDERS = {
+    "deepseek",
+    "qwen",
+    "openrouter",
+    "groq",
+    "gemini",
+    "custom",
+}
+
+
 @dataclass
 class Job:
     id: str
@@ -45,11 +55,19 @@ class JobStore:
         api_key = str(payload.get("api_key", "")).strip()
         base_url = str(payload.get("base_url", "")).strip().rstrip("/")
         model = str(payload.get("model", "")).strip()
+        provider = str(payload.get("provider", "custom")).strip().lower()
         if not api_key or not base_url or not model:
             raise ValueError("API key, base URL, and model are required")
+        if provider not in SUPPORTED_PROVIDERS:
+            raise ValueError("Unsupported model provider")
         if not base_url.startswith("https://"):
             raise ValueError("Base URL must use HTTPS")
-        self.runtime_config = Config(api_key=api_key, base_url=base_url, model=model)
+        self.runtime_config = Config(
+            api_key=api_key,
+            base_url=base_url,
+            model=model,
+            provider=provider,
+        )
         return self.runtime_config
 
     def config(self, *, require_key: bool = True) -> Config:
@@ -113,6 +131,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             config = self.store.config(require_key=False)
             self._json(200, {
                 "ready": bool(config.api_key),
+                "provider": config.provider,
                 "model": config.model,
                 "base_url": config.base_url,
                 "message": "Ready for live runs" if config.api_key else "Configure a model to enable live runs",
@@ -138,7 +157,12 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 raise ValueError("Request body must be an object")
             if route == "/api/config":
                 config = self.store.configure(payload)
-                self._json(200, {"ready": True, "model": config.model, "base_url": config.base_url})
+                self._json(200, {
+                    "ready": True,
+                    "provider": config.provider,
+                    "model": config.model,
+                    "base_url": config.base_url,
+                })
             else:
                 job = self.store.create(payload)
                 self._json(202, job.public())
