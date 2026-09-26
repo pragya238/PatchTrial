@@ -33,6 +33,11 @@ class ModelClient:
             "temperature": self.config.temperature,
             "stream": False,
         }
+        if self.config.provider == "openrouter":
+            # The free router may otherwise select a model that answers the tool
+            # protocol in prose. Require a route that supports JSON mode.
+            payload["response_format"] = {"type": "json_object"}
+            payload["provider"] = {"require_parameters": True}
         body = json.dumps(payload).encode("utf-8")
         endpoint = f"{self.config.base_url}/chat/completions"
         req = request.Request(

@@ -51,6 +51,45 @@ class ModelClientTests(unittest.TestCase):
         self.assertEqual(captured["payload"]["messages"][0]["content"], "hello")
         self.assertEqual(captured["timeout"], 120)
 
+    def test_openrouter_requires_json_capable_route(self):
+        captured = {}
+        response_payload = {
+            "choices": [{"message": {"content": '{"name":"finish","arguments":{}}'}}],
+        }
+
+        def fake_urlopen(req, timeout):
+            captured["payload"] = json.loads(req.data)
+            return FakeHTTPResponse(response_payload)
+
+        config = Config(
+            api_key="sk-or-test",
+            base_url="https://openrouter.ai/api/v1",
+            model="openrouter/free",
+            provider="openrouter",
+        )
+        with patch("patchtrial.model.request.urlopen", side_effect=fake_urlopen):
+            ModelClient(config).complete([{"role": "user", "content": "hello"}])
+
+        self.assertEqual(captured["payload"]["response_format"], {"type": "json_object"})
+        self.assertEqual(captured["payload"]["provider"], {"require_parameters": True})
+
+    def test_generic_gateway_does_not_receive_openrouter_routing_fields(self):
+        captured = {}
+        response_payload = {
+            "choices": [{"message": {"content": '{"name":"finish","arguments":{}}'}}],
+        }
+
+        def fake_urlopen(req, timeout):
+            captured["payload"] = json.loads(req.data)
+            return FakeHTTPResponse(response_payload)
+
+        config = Config(api_key="key", base_url="https://gateway.test/v1", model="model")
+        with patch("patchtrial.model.request.urlopen", side_effect=fake_urlopen):
+            ModelClient(config).complete([{"role": "user", "content": "hello"}])
+
+        self.assertNotIn("response_format", captured["payload"])
+        self.assertNotIn("provider", captured["payload"])
+
 
 if __name__ == "__main__":
     unittest.main()
