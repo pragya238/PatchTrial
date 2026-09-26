@@ -80,6 +80,18 @@ Evaluation input can also be supplied without changing `make run`:
 The target must be a clean Git repository. This is required because PatchTrial temporarily
 reverses and reapplies patches during adversarial trials.
 
+For the visual interface:
+
+```bash
+export AI_API_KEY="..."
+export AI_BASE_URL="..."
+export AI_MODEL="..."
+make ui
+```
+
+Then open `http://127.0.0.1:8765`. The guided demo needs no API key; the live workspace uses the
+configured model and displays progress, evidence strength, counterfeit results, and the final diff.
+
 ```bash
 export AI_API_KEY="..."
 export TARGET_REPO="/path/to/target-repository"
@@ -128,6 +140,18 @@ repository code, so official evaluation should still use an isolated environment
 
 ```bash
 make test
+```
+
+Before evaluation, run the preflight checker against the clean target repository:
+
+```bash
+TARGET_REPO=/path/to/target make doctor
+```
+
+After several evaluation runs, aggregate their proof artifacts:
+
+```bash
+make scorecard REPORTS="run-1.json run-2.json run-3.json"
 ```
 
 ## Evidence strengthening

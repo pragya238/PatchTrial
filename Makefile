@@ -1,4 +1,4 @@
-.PHONY: setup run test clean demo
+.PHONY: setup run ui doctor scorecard test clean demo
 
 PYTHON ?= python3
 VENV ?= .venv
@@ -11,6 +11,16 @@ setup:
 run:
 	@test -n "$(AI_API_KEY)" || (echo "AI_API_KEY is required" && exit 1)
 	$(BIN)/python -m patchtrial.cli
+
+ui:
+	$(BIN)/python -m patchtrial.web
+
+doctor:
+	$(BIN)/python -m patchtrial.doctor
+
+scorecard:
+	@test -n "$(REPORTS)" || (echo "Usage: make scorecard REPORTS='proof1.json proof2.json'" && exit 1)
+	$(BIN)/python -m patchtrial.scorecard $(REPORTS)
 
 test:
 	$(BIN)/python -m unittest discover -s tests -v
