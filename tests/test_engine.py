@@ -78,6 +78,65 @@ def git(root: Path, *args: str) -> None:
 
 
 class EngineIntegrationTests(unittest.TestCase):
+    def test_reproduction_requires_real_failure_before_production_edit(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            git(root, "init", "-q")
+            git(root, "config", "user.email", "test@example.com")
+            git(root, "config", "user.name", "Test")
+            (root / "calculator.py").write_text(
+                "def add(a, b):\n    return a - b\n", encoding="utf-8"
+            )
+            git(root, "add", ".")
+            git(root, "commit", "-qm", "initial")
+            engine = PatchTrialEngine(
+                Config(api_key="fake", base_url="https://invalid", model="fake"),
+                Repository(root),
+                FakeModel(),
+                test_command="python -m unittest",
+                event=lambda _: None,
+            )
+            before_failure = engine._execute(
+                "record_reproduction", {"command": "python -c fail", "evidence": "x"}
+            )
+            self.assertIn("TOOL ERROR", before_failure)
+            engine._execute(
+                "run_command", {"command": "python -c 'raise SystemExit(1)'"}
+            )
+            accepted = engine._execute(
+                "record_reproduction", {"command": "python", "evidence": "baseline fails"}
+            )
+            self.assertIn("recorded", accepted)
+            self.assertTrue(engine.reproduction_recorded)
+
+    def test_reproduction_rejects_failure_after_production_edit(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            git(root, "init", "-q")
+            git(root, "config", "user.email", "test@example.com")
+            git(root, "config", "user.name", "Test")
+            (root / "calculator.py").write_text(
+                "def add(a, b):\n    return a - b\n", encoding="utf-8"
+            )
+            git(root, "add", ".")
+            git(root, "commit", "-qm", "initial")
+            engine = PatchTrialEngine(
+                Config(api_key="fake", base_url="https://invalid", model="fake"),
+                Repository(root),
+                FakeModel(),
+                test_command="python -m unittest",
+                event=lambda _: None,
+            )
+            engine._execute("apply_patch", {"patch": CANDIDATE_PATCH})
+            engine._execute(
+                "run_command", {"command": "python -c 'raise SystemExit(1)'"}
+            )
+            rejected = engine._execute(
+                "record_reproduction", {"command": "python", "evidence": "late failure"}
+            )
+            self.assertIn("production-code changes", rejected)
+            self.assertFalse(engine.reproduction_recorded)
+
     def test_context_history_is_bounded_without_losing_task(self):
         config = Config(
             api_key="fake",

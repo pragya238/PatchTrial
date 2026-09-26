@@ -45,6 +45,7 @@ class PatchTrialEngine:
         self.prompt_tokens = 0
         self.completion_tokens = 0
         self.reproduction_recorded = False
+        self.last_command_result: CommandResult | None = None
 
     def run(self, task: str, report_path: Path) -> RunResult:
         initial_status = self.repository.status().strip()
@@ -170,14 +171,26 @@ class PatchTrialEngine:
             if name == "apply_patch":
                 return _format_command(self.repository.apply_patch(str(arguments["patch"])))
             if name == "run_command":
-                return _format_command(self.repository.run_command(str(arguments["command"])))
+                self.last_command_result = self.repository.run_command(str(arguments["command"]))
+                return _format_command(self.last_command_result)
             if name == "inspect_diff":
                 return self.repository.diff() or "No changes"
             if name == "repository_status":
                 return self.repository.status() or "Clean"
             if name == "record_reproduction":
+                if self.last_command_result is None or self.last_command_result.ok:
+                    return "TOOL ERROR: reproduction requires an immediately preceding failing command"
+                changed = _changed_files(self.repository.diff())
+                if changed and not all(_is_test_path(path) for path in changed):
+                    return (
+                        "TOOL ERROR: reproduction cannot be recorded after production-code changes; "
+                        "restore production code and reproduce with baseline or test-only changes"
+                    )
                 self.reproduction_recorded = True
-                return "Reproduction evidence recorded"
+                return (
+                    "Reproduction evidence recorded from failing command: "
+                    f"{self.last_command_result.command}"
+                )
         except (KeyError, TypeError, ValueError, RepositoryError) as exc:
             return f"TOOL ERROR: {exc}"
         return f"TOOL ERROR: unsupported tool {name}"

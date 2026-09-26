@@ -27,10 +27,12 @@ Available tools:
 - run_command: {"command": "allowlisted command"}
 - inspect_diff: {}
 - repository_status: {}
-- record_reproduction: {"command": "command that failed", "evidence": "why failure reproduces issue"}
+- record_reproduction: {"command": "immediately preceding command that failed", "evidence": "why failure reproduces issue"}
 - finish: {"summary": "what changed", "verification": "tests and results"}
 
 Do not call finish until the final test command passes and the diff has been inspected.
+The harness accepts record_reproduction only after a real failing command and before any production
+code is changed (test-only reproduction changes are allowed).
 """
 
 

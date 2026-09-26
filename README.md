@@ -27,6 +27,10 @@ The MVP implements the full first-pass workflow:
 The harness uses an OpenAI-compatible chat-completions transport without an SDK. This keeps it
 portable across DeepSeek, Qwen, and compatible evaluation gateways.
 
+Reproduction is evidence-backed: the model cannot mark a bug reproduced unless the immediately
+preceding repository command actually failed, and no production-code edits are present at that
+point. A newly added failing regression test is allowed.
+
 ## Setup
 
 Requirements: Python 3.10+ and Git.
