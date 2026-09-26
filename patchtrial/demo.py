@@ -26,7 +26,7 @@ COUNTERFEIT = """diff --git a/pricing.py b/pricing.py
 +++ b/pricing.py
 @@ -1,2 +1,2 @@
  def discounted(price, percent):
--    return price
+-    return price * (1 - percent / 100)
 +    return abs(price) * (1 - percent / 100)
 """
 

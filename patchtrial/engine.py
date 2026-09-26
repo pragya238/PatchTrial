@@ -95,8 +95,6 @@ class PatchTrialEngine:
                         report.strengthening_applied = True
                         report.strengthening_changed_files = _changed_files(strengthening_patch)
                         report.trials = self._rerun_survivors(
-                            candidate_diff,
-                            strengthening_patch,
                             counterfeits,
                             report.trials,
                         )
@@ -239,7 +237,9 @@ class PatchTrialEngine:
             hypothesis = str(item.get("hypothesis", ""))[:500]
             patch = str(item.get("patch", ""))
             if patch and "diff --git" in patch:
-                counterfeits.append({"name": name, "hypothesis": hypothesis, "patch": patch})
+                patch = _production_only_patch(patch)
+                if patch:
+                    counterfeits.append({"name": name, "hypothesis": hypothesis, "patch": patch})
         return counterfeits
 
     def _run_trials(
@@ -249,12 +249,10 @@ class PatchTrialEngine:
         for index, counterfeit in enumerate(counterfeits, 1):
             name = counterfeit["name"]
             self.event(f"  trial {index}/{len(counterfeits)}: {name}")
-            reversed_candidate = self.repository.apply_patch(candidate_diff, reverse=True)
-            if not reversed_candidate.ok:
-                raise RepositoryError("could not restore baseline before counterfeit trial")
-
             counterfeit_applied = False
             try:
+                # Counterfeits are candidate-relative production mutations. Keeping the
+                # candidate tests in place makes the trial both simpler and more faithful.
                 applied = self.repository.apply_patch(counterfeit["patch"])
                 if not applied.ok:
                     trials.append(TrialResult(
@@ -281,9 +279,6 @@ class PatchTrialEngine:
                     removed = self.repository.apply_patch(counterfeit["patch"], reverse=True)
                     if not removed.ok:
                         raise RepositoryError(f"could not remove counterfeit patch {name}")
-                restored = self.repository.apply_patch(candidate_diff)
-                if not restored.ok:
-                    raise RepositoryError("could not restore candidate patch after trial")
         return trials
 
     def _generate_strengthening_patch(
@@ -343,8 +338,6 @@ class PatchTrialEngine:
 
     def _rerun_survivors(
         self,
-        candidate_diff: str,
-        strengthening_patch: str,
         counterfeits: list[dict[str, str]],
         original_trials: list[TrialResult],
     ) -> list[TrialResult]:
@@ -359,14 +352,10 @@ class PatchTrialEngine:
                 updated.append(trial)
                 continue
 
-            removed_tests = self.repository.apply_patch(strengthening_patch, reverse=True)
-            removed_candidate = self.repository.apply_patch(candidate_diff, reverse=True)
-            if not removed_tests.ok or not removed_candidate.ok:
-                raise RepositoryError("could not restore baseline for strengthened trial")
-
             counterfeit_applied = False
-            tests_applied = False
             try:
+                # The repository already contains the correct candidate and strengthened
+                # tests. Apply only the candidate-relative wrong production mutation.
                 applied = self.repository.apply_patch(counterfeit["patch"])
                 if not applied.ok:
                     updated.append(TrialResult(
@@ -375,14 +364,6 @@ class PatchTrialEngine:
                     ))
                     continue
                 counterfeit_applied = True
-                added_tests = self.repository.apply_patch(strengthening_patch)
-                if not added_tests.ok:
-                    updated.append(TrialResult(
-                        trial.name, trial.hypothesis, True, False, None,
-                        "stronger test could not be applied to the counterfeit state",
-                    ))
-                    continue
-                tests_applied = True
                 test = self.repository.run_command(self.test_command)
                 updated.append(TrialResult(
                     trial.name,
@@ -393,18 +374,10 @@ class PatchTrialEngine:
                     (test.stderr or test.stdout)[-2000:],
                 ))
             finally:
-                if tests_applied:
-                    removed = self.repository.apply_patch(strengthening_patch, reverse=True)
-                    if not removed.ok:
-                        raise RepositoryError("could not remove stronger test from counterfeit")
                 if counterfeit_applied:
                     removed = self.repository.apply_patch(counterfeit["patch"], reverse=True)
                     if not removed.ok:
                         raise RepositoryError("could not remove counterfeit after stronger test")
-                restored_candidate = self.repository.apply_patch(candidate_diff)
-                restored_tests = self.repository.apply_patch(strengthening_patch)
-                if not restored_candidate.ok or not restored_tests.ok:
-                    raise RepositoryError("could not restore strengthened correct candidate")
         return updated
 
     def _complete(self, messages: list[dict[str, str]]) -> ModelResponse:
@@ -479,3 +452,15 @@ def _is_test_path(path: str) -> bool:
         or ".spec." in name
         or name.endswith(("_test.py", "_test.go", "tests.cs", "test.java"))
     )
+
+
+def _production_only_patch(patch: str) -> str:
+    sections = re.split(r"(?=^diff --git )", patch.strip(), flags=re.MULTILINE)
+    kept: list[str] = []
+    for section in sections:
+        if not section.startswith("diff --git "):
+            continue
+        changed = _changed_files(section)
+        if changed and not any(_is_test_path(path) for path in changed):
+            kept.append(section.rstrip() + "\n")
+    return "".join(kept)

@@ -60,8 +60,9 @@ def counterfeit_prompt(task: str, candidate_diff: str, maximum: int) -> str:
 
 Given a software task and a candidate git diff, generate up to {maximum} plausible counterfeit
 patches. Each counterfeit must represent a subtle semantic mistake that a coding agent might make.
-The test changes from the candidate should remain present, while production behavior should contain
-one named fault. Each patch must be a complete git unified diff applicable to the original baseline.
+Each patch will be applied ON TOP OF the correct candidate working tree. It must modify production
+code only, introducing one named fault while leaving the candidate's tests untouched. Diff removed
+lines must therefore match the correct candidate implementation, not the original baseline.
 
 Reject trivial counterfeits such as deleting all implementation, introducing syntax errors, disabling
 tests, or making unrelated changes. Prefer boundary errors, lost state, incomplete compatibility,

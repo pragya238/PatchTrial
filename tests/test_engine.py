@@ -24,7 +24,7 @@ COUNTERFEIT_PATCH = """diff --git a/calculator.py b/calculator.py
 +++ b/calculator.py
 @@ -1,2 +1,2 @@
  def add(a, b):
--    return a - b
+-    return a + b
 +    return abs(a) + abs(b)
 """
 
