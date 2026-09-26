@@ -6,3 +6,4 @@ __pycache__/
 patchtrial-proof.json
 work/
 outputs/
+.DS_Store
