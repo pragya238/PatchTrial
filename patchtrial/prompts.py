@@ -23,6 +23,8 @@ Available tools:
 - list_files: {"pattern": "optional glob"}
 - search_code: {"query": "literal text", "path": "optional directory"}
 - read_file: {"path": "relative path", "start_line": 1, "end_line": 400}
+- replace_text: {"path": "existing file", "old": "exact unique text", "new": "replacement"}
+- create_file: {"path": "new relative path", "content": "complete text"}
 - apply_patch: {"patch": "complete git unified diff"}
 - run_command: {"command": "allowlisted command"}
 - inspect_diff: {}
@@ -31,6 +33,9 @@ Available tools:
 - finish: {"summary": "what changed", "verification": "tests and results"}
 
 Do not call finish until the final test command passes and the diff has been inspected.
+Prefer replace_text for small edits to existing files; it is more reliable than constructing diff
+hunk headers. Use create_file only for a path that does not exist. If apply_patch fails once, use
+replace_text or create_file instead of repeatedly guessing another diff.
 The harness accepts record_reproduction only after a real failing command and before any production
 code is changed (test-only reproduction changes are allowed).
 """

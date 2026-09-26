@@ -73,11 +73,57 @@ class StrengtheningModel(FakeModel):
         }))
 
 
+class ReplaceTextModel(FakeModel):
+    def __init__(self):
+        super().__init__()
+        self.responses[0] = json.dumps({
+            "reason": "Use an exact edit instead of a fragile diff",
+            "action": {
+                "name": "replace_text",
+                "arguments": {
+                    "path": "calculator.py",
+                    "old": "return a - b",
+                    "new": "return a + b",
+                },
+            },
+        })
+
+
 def git(root: Path, *args: str) -> None:
     subprocess.run(["git", *args], cwd=root, check=True, capture_output=True, text=True)
 
 
 class EngineIntegrationTests(unittest.TestCase):
+    def test_exact_text_edit_can_build_candidate_without_diff_generation(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            git(root, "init", "-q")
+            git(root, "config", "user.email", "test@example.com")
+            git(root, "config", "user.name", "Test")
+            (root / "calculator.py").write_text("def add(a, b):\n    return a - b\n")
+            (root / "test_calculator.py").write_text(
+                "import unittest\nfrom calculator import add\n\n"
+                "class Tests(unittest.TestCase):\n"
+                "    def test_add(self):\n"
+                "        self.assertEqual(add(-2, 1), -1)\n"
+            )
+            git(root, "add", ".")
+            git(root, "commit", "-qm", "initial")
+            engine = PatchTrialEngine(
+                Config(api_key="fake", base_url="https://invalid", model="fake"),
+                Repository(root),
+                ReplaceTextModel(),
+                test_command="python -m unittest discover -v",
+                event=lambda _: None,
+            )
+            report_path = Path(temp).parent / f"{root.name}-replace-proof.json"
+            try:
+                result = engine.run("Correct add", report_path)
+                self.assertEqual(result.report.verdict, "ACCEPTED")
+                self.assertIn("return a + b", (root / "calculator.py").read_text())
+            finally:
+                report_path.unlink(missing_ok=True)
+
     def test_reproduction_requires_real_failure_before_production_edit(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

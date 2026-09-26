@@ -6,6 +6,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
 import threading
+import tempfile
 import time
 import uuid
 from urllib.parse import urlparse
@@ -96,6 +97,7 @@ class JobStore:
 
     def _run(self, job: Job, payload: dict) -> None:
         job.status = "running"
+        repository: Repository | None = None
         try:
             config = self.config()
             repository = Repository(
@@ -106,7 +108,9 @@ class JobStore:
             test_command = str(payload.get("test_command", "")).strip()
             if not test_command:
                 test_command = repository.detect_test_command()
-            report_path = repository.root / "patchtrial-proof.json"
+            report_dir = Path(tempfile.gettempdir()) / "patchtrial-proofs"
+            report_dir.mkdir(parents=True, exist_ok=True)
+            report_path = report_dir / f"{job.id}.json"
             engine = PatchTrialEngine(
                 config,
                 repository,
@@ -123,7 +127,14 @@ class JobStore:
             }
             job.status = "complete"
         except (ConfigError, ModelError, RepositoryError, OSError, ValueError) as exc:
-            job.error = str(exc)
+            restoration = ""
+            if repository is not None:
+                try:
+                    restoration = "; repository restored to its clean starting state"
+                    repository.restore_clean()
+                except RepositoryError as restore_exc:
+                    restoration = f"; WARNING: automatic restoration failed: {restore_exc}"
+            job.error = str(exc) + restoration
             job.status = "failed"
 
 

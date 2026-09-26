@@ -43,6 +43,42 @@ class RepositoryTests(unittest.TestCase):
         self.assertTrue(self.repo.apply_patch(patch, reverse=True).ok)
         self.assertEqual((self.root / "app.py").read_text(), "VALUE = 1\n")
 
+    def test_recounts_incorrect_hunk_lengths_and_strips_fences(self):
+        malformed_counts = """Here is the patch:
+```diff
+diff --git a/app.py b/app.py
+--- a/app.py
++++ b/app.py
+@@ -1,99 +1,99 @@
+-VALUE = 1
++VALUE = 2
+```
+"""
+        self.assertTrue(self.repo.apply_patch(malformed_counts).ok)
+        self.assertEqual((self.root / "app.py").read_text(), "VALUE = 2\n")
+
+    def test_replace_text_requires_one_exact_match(self):
+        result = self.repo.replace_text("app.py", "VALUE = 1", "VALUE = 2")
+        self.assertIn("Replaced one", result)
+        self.assertEqual((self.root / "app.py").read_text(), "VALUE = 2\n")
+        with self.assertRaisesRegex(RepositoryError, "found 0 matches"):
+            self.repo.replace_text("app.py", "VALUE = 1", "VALUE = 3")
+
+    def test_create_file_rejects_overwrite(self):
+        self.repo.create_file("tests/test_app.py", "assert True\n")
+        self.assertEqual((self.root / "tests/test_app.py").read_text(), "assert True\n")
+        with self.assertRaisesRegex(RepositoryError, "already exists"):
+            self.repo.create_file("tests/test_app.py", "assert False\n")
+
+    def test_restore_clean_reverts_tracked_and_untracked_changes(self):
+        self.repo.replace_text("app.py", "VALUE = 1", "VALUE = 2")
+        self.repo.create_file("new.py", "NEW = True\n")
+        self.assertTrue(self.repo.status())
+        self.repo.restore_clean()
+        self.assertEqual(self.repo.status(), "")
+        self.assertEqual((self.root / "app.py").read_text(), "VALUE = 1\n")
+        self.assertFalse((self.root / "new.py").exists())
+
     def test_diff_includes_untracked_files(self):
         (self.root / "new_test.py").write_text("assert True\n", encoding="utf-8")
         diff = self.repo.diff()

@@ -15,7 +15,7 @@ from .repository import CommandResult, Repository, RepositoryError
 
 
 TOOLS = {
-    "list_files", "search_code", "read_file", "apply_patch", "run_command",
+    "list_files", "search_code", "read_file", "replace_text", "create_file", "apply_patch", "run_command",
     "inspect_diff", "repository_status", "record_reproduction", "finish",
 }
 
@@ -46,6 +46,7 @@ class PatchTrialEngine:
         self.completion_tokens = 0
         self.reproduction_recorded = False
         self.last_command_result: CommandResult | None = None
+        self.patch_failures = 0
 
     def run(self, task: str, report_path: Path) -> RunResult:
         initial_status = self.repository.status().strip()
@@ -168,8 +169,32 @@ class PatchTrialEngine:
                     int(arguments.get("start_line", 1)),
                     int(arguments.get("end_line", 400)),
                 )
+            if name == "replace_text":
+                return self.repository.replace_text(
+                    str(arguments["path"]),
+                    str(arguments["old"]),
+                    str(arguments["new"]),
+                )
+            if name == "create_file":
+                return self.repository.create_file(
+                    str(arguments["path"]), str(arguments["content"])
+                )
             if name == "apply_patch":
-                return _format_command(self.repository.apply_patch(str(arguments["patch"])))
+                if self.patch_failures >= 2:
+                    return (
+                        "TOOL ERROR: apply_patch is disabled after two malformed patches. "
+                        "Use replace_text for existing files or create_file for a new file."
+                    )
+                result = self.repository.apply_patch(str(arguments["patch"]))
+                if result.ok:
+                    self.patch_failures = 0
+                    return _format_command(result)
+                self.patch_failures += 1
+                return (
+                    _format_command(result)
+                    + "\nRECOVERY: Do not repeat the same patch. Prefer replace_text with an "
+                    "exact old snippet copied from read_file, or create_file for a new file."
+                )
             if name == "run_command":
                 self.last_command_result = self.repository.run_command(str(arguments["command"]))
                 return _format_command(self.last_command_result)

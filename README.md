@@ -24,6 +24,11 @@ The MVP implements the full first-pass workflow:
 9. Verify the stronger test against both the correct and counterfeit implementations.
 10. Restore the strengthened correct candidate and write `patchtrial-proof.json`.
 
+For weaker or inexpensive models, the implementation loop also exposes exact-text replacement and
+safe new-file creation tools. Malformed diff hunk counts are repaired automatically, repeated bad
+patch attempts are cut off, and failed live runs restore the repository to its clean starting state.
+This keeps provider quirks from turning into corrupted worktrees or endless retry loops.
+
 The harness uses an OpenAI-compatible chat-completions transport without an SDK. This keeps it
 portable across DeepSeek, Qwen, and compatible evaluation gateways.
 

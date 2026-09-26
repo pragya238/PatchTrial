@@ -89,13 +89,14 @@ class Repository:
         return "\n".join(lines) or "No matches"
 
     def apply_patch(self, patch: str, *, reverse: bool = False) -> CommandResult:
-        if not patch.strip() or "diff --git" not in patch:
+        patch = _normalize_patch(patch)
+        if not patch or "diff --git" not in patch:
             raise RepositoryError("patch must be a non-empty git unified diff")
         with tempfile.NamedTemporaryFile("w", suffix=".patch", encoding="utf-8") as handle:
             handle.write(patch)
             handle.flush()
-            check = ["git", "apply", "--check"]
-            apply = ["git", "apply", "--whitespace=nowarn"]
+            check = ["git", "apply", "--check", "--recount"]
+            apply = ["git", "apply", "--recount", "--whitespace=nowarn"]
             if reverse:
                 check.append("--reverse")
                 apply.append("--reverse")
@@ -105,6 +106,47 @@ class Repository:
             if not checked.ok:
                 return checked
             return self._run(apply, enforce_allowlist=False)
+
+    def replace_text(self, path: str, old: str, new: str) -> str:
+        if not old:
+            raise RepositoryError("old text must not be empty")
+        if old == new:
+            raise RepositoryError("old and new text are identical")
+        target = self._resolve(path)
+        if not target.is_file():
+            raise RepositoryError(f"file not found: {path}")
+        content = target.read_text(encoding="utf-8")
+        count = content.count(old)
+        if count != 1:
+            raise RepositoryError(
+                f"old text must match exactly once in {path}; found {count} matches. "
+                "Re-read the file and use a larger exact snippet."
+            )
+        target.write_text(content.replace(old, new, 1), encoding="utf-8")
+        return f"Replaced one exact occurrence in {path}"
+
+    def create_file(self, path: str, content: str) -> str:
+        target = self._resolve(path)
+        if target.exists():
+            raise RepositoryError(f"file already exists: {path}; use replace_text")
+        if "\x00" in content:
+            raise RepositoryError("binary file content is not supported")
+        if len(content) > 1_000_000:
+            raise RepositoryError("new file exceeds 1,000,000 characters")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content, encoding="utf-8")
+        return f"Created {path} ({len(content)} characters)"
+
+    def restore_clean(self) -> str:
+        current = self.diff()
+        if current.strip():
+            restored = self.apply_patch(current, reverse=True)
+            if not restored.ok:
+                raise RepositoryError(restored.stderr or "could not restore clean baseline")
+        remaining = self.status().strip()
+        if remaining:
+            raise RepositoryError(f"repository restoration left changes:\n{remaining}")
+        return "Repository restored to its clean starting state"
 
     def diff(self) -> str:
         result = self._run(["git", "diff", "--no-ext-diff", "--binary"], enforce_allowlist=False)
@@ -205,3 +247,14 @@ def _as_text(value: str | bytes | None) -> str:
     if isinstance(value, bytes):
         return value.decode("utf-8", errors="replace")
     return value
+
+
+def _normalize_patch(value: str) -> str:
+    patch = value.strip()
+    start = patch.find("diff --git ")
+    if start < 0:
+        return patch
+    patch = patch[start:]
+    if patch.endswith("```"):
+        patch = patch[:-3].rstrip()
+    return patch + "\n"
