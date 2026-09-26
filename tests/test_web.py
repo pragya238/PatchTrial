@@ -66,6 +66,13 @@ class WebTests(unittest.TestCase):
         self.assertIn("Click “Use for this session” to activate", page)
         self.assertIn("run.disabled=true", page)
 
+    def test_public_workspace_has_a_safe_runnable_demo(self):
+        page = (Path(__file__).parent.parent / "dashboard" / "dist" / "live.html").read_text()
+        self.assertIn("Browser demo ready · no API key needed", page)
+        self.assertIn("function runPublicTrial()", page)
+        self.assertIn("if(!isLocal){runPublicTrial();return}", page)
+        self.assertIn("$('#config').hidden=true", page)
+
     def test_job_requires_repository_and_task(self):
         store = JobStore()
         with self.assertRaisesRegex(ValueError, "Repository path and task"):
