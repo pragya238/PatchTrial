@@ -3,7 +3,7 @@ import unittest
 from unittest.mock import patch
 
 from patchtrial.config import Config
-from patchtrial.model import ModelClient
+from patchtrial.model import ModelClient, OPENROUTER_FREE_FALLBACKS
 
 
 class FakeHTTPResponse:
@@ -72,6 +72,9 @@ class ModelClientTests(unittest.TestCase):
 
         self.assertEqual(captured["payload"]["response_format"], {"type": "json_object"})
         self.assertEqual(captured["payload"]["provider"], {"require_parameters": True})
+        self.assertEqual(captured["payload"]["model"], OPENROUTER_FREE_FALLBACKS[0])
+        self.assertEqual(captured["payload"]["models"], OPENROUTER_FREE_FALLBACKS[1:])
+        self.assertEqual(len(captured["payload"]["models"]), 3)
 
     def test_generic_gateway_does_not_receive_openrouter_routing_fields(self):
         captured = {}

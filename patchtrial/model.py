@@ -9,6 +9,16 @@ from urllib import error, request
 from .config import Config
 
 
+# Current free routes with JSON-mode support, ordered for coding reliability.
+# OpenRouter accepts one primary model plus at most three fallbacks.
+OPENROUTER_FREE_FALLBACKS = [
+    "nvidia/nemotron-3-super-120b-a12b:free",
+    "google/gemma-4-31b-it:free",
+    "dots-studio/dots-3-note-preview:free",
+    "google/gemma-4-26b-a4b-it:free",
+]
+
+
 class ModelError(RuntimeError):
     pass
 
@@ -38,6 +48,9 @@ class ModelClient:
             # protocol in prose. Require a route that supports JSON mode.
             payload["response_format"] = {"type": "json_object"}
             payload["provider"] = {"require_parameters": True}
+            if self.config.model == "openrouter/free":
+                payload["model"] = OPENROUTER_FREE_FALLBACKS[0]
+                payload["models"] = OPENROUTER_FREE_FALLBACKS[1:]
         body = json.dumps(payload).encode("utf-8")
         endpoint = f"{self.config.base_url}/chat/completions"
         req = request.Request(

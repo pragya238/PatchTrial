@@ -28,6 +28,9 @@ For weaker or inexpensive models, the implementation loop also exposes exact-tex
 safe new-file creation tools. Malformed diff hunk counts are repaired automatically, repeated bad
 patch attempts are cut off, and failed live runs restore the repository to its clean starting state.
 This keeps provider quirks from turning into corrupted worktrees or endless retry loops.
+OpenRouter's logical `openrouter/free` option is backed by an ordered set of free JSON-capable
+models with automatic failover, so a rate-limited shared provider does not become a single point
+of failure.
 
 The harness uses an OpenAI-compatible chat-completions transport without an SDK. This keeps it
 portable across DeepSeek, Qwen, and compatible evaluation gateways.
