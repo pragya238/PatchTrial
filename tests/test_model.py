@@ -3,7 +3,7 @@ import unittest
 from unittest.mock import patch
 
 from patchtrial.config import Config
-from patchtrial.model import ModelClient, OPENROUTER_FREE_FALLBACKS, _redact_secret
+from patchtrial.model import ModelClient, _redact_secret
 
 
 class FakeHTTPResponse:
@@ -57,13 +57,67 @@ class ModelClientTests(unittest.TestCase):
         self.assertEqual(captured["payload"]["messages"][0]["content"], "hello")
         self.assertEqual(captured["timeout"], 120)
 
+    def test_qwen_model_discovery_uses_native_catalog_endpoint(self):
+        captured = {}
+        catalog_payload = {
+            "output": {
+                "models": [
+                    {
+                        "model": "qwen3-coder-plus",
+                        "name": "Qwen Coder",
+                        "features": ["structured-outputs"],
+                    }
+                ]
+            }
+        }
+
+        def fake_urlopen(req, timeout):
+            captured["url"] = req.full_url
+            captured["authorization"] = req.get_header("Authorization")
+            return FakeHTTPResponse(catalog_payload)
+
+        config = Config(
+            api_key="qwen-key",
+            base_url="https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+            model="qwen3-coder-plus",
+            provider="qwen",
+        )
+        with patch("patchtrial.model.request.urlopen", side_effect=fake_urlopen):
+            models = ModelClient(config).list_models()
+
+        self.assertIn("/api/v1/models?", captured["url"])
+        self.assertIn("providers=qwen", captured["url"])
+        self.assertEqual(captured["authorization"], "Bearer qwen-key")
+        self.assertEqual(models[0]["id"], "qwen3-coder-plus")
+        self.assertEqual(models[0]["supported_parameters"], ["response_format"])
+
     def test_openrouter_requires_json_capable_route(self):
         captured = {}
+        catalog_payload = {
+            "data": [
+                {
+                    "id": "example/json-free:free",
+                    "pricing": {"prompt": "0", "completion": "0"},
+                    "context_length": 100_000,
+                    "architecture": {"output_modalities": ["text"]},
+                    "supported_parameters": ["response_format"],
+                },
+                {
+                    "id": "example/second-free:free",
+                    "pricing": {"prompt": "0", "completion": "0"},
+                    "context_length": 80_000,
+                    "architecture": {"output_modalities": ["text"]},
+                    "supported_parameters": ["response_format"],
+                },
+            ]
+        }
         response_payload = {
             "choices": [{"message": {"content": '{"name":"finish","arguments":{}}'}}],
         }
 
         def fake_urlopen(req, timeout):
+            if req.get_method() == "GET":
+                return FakeHTTPResponse(catalog_payload)
             captured["payload"] = json.loads(req.data)
             return FakeHTTPResponse(response_payload)
 
@@ -78,9 +132,43 @@ class ModelClientTests(unittest.TestCase):
 
         self.assertEqual(captured["payload"]["response_format"], {"type": "json_object"})
         self.assertEqual(captured["payload"]["provider"], {"require_parameters": True})
-        self.assertEqual(captured["payload"]["model"], OPENROUTER_FREE_FALLBACKS[0])
-        self.assertEqual(captured["payload"]["models"], OPENROUTER_FREE_FALLBACKS[1:])
-        self.assertEqual(len(captured["payload"]["models"]), 3)
+        self.assertEqual(captured["payload"]["model"], "example/json-free:free")
+        self.assertEqual(captured["payload"]["models"], ["example/second-free:free"])
+
+    def test_openrouter_does_not_require_json_when_a_fallback_lacks_support(self):
+        captured = {}
+        catalog_payload = {
+            "data": [
+                {
+                    "id": "example/plain-free:free",
+                    "pricing": {"prompt": "0", "completion": "0"},
+                    "context_length": 100_000,
+                    "architecture": {"output_modalities": ["text"]},
+                    "supported_parameters": ["temperature"],
+                }
+            ]
+        }
+        response_payload = {
+            "choices": [{"message": {"content": '{"name":"finish","arguments":{}}'}}],
+        }
+
+        def fake_urlopen(req, timeout):
+            if req.get_method() == "GET":
+                return FakeHTTPResponse(catalog_payload)
+            captured["payload"] = json.loads(req.data)
+            return FakeHTTPResponse(response_payload)
+
+        config = Config(
+            api_key="sk-or-test",
+            base_url="https://openrouter.ai/api/v1",
+            model="openrouter/free",
+            provider="openrouter",
+        )
+        with patch("patchtrial.model.request.urlopen", side_effect=fake_urlopen):
+            ModelClient(config).complete([{"role": "user", "content": "hello"}])
+
+        self.assertEqual(captured["payload"]["model"], "example/plain-free:free")
+        self.assertNotIn("response_format", captured["payload"])
 
     def test_generic_gateway_does_not_receive_openrouter_routing_fields(self):
         captured = {}

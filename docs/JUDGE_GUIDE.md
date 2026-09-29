@@ -23,6 +23,11 @@ benchmark fixtures without making a model request.
 - Guided demo: https://pragya238.github.io/PatchTrial/
 - Live workspace: https://pragya238.github.io/PatchTrial/live.html
 - Use **Run guided sample — no API key** to see the full evidence loop without credits.
+- For a live hosted proposal, choose a provider, paste a key, and click **Check connection & use
+  model**. PatchTrial loads the provider's current models before enabling the run. OpenRouter's
+  `openrouter/free` option visibly fails over between current free text models with bounded waits.
+- For arbitrary repositories and the full patch/counterfeit loop, run `make ui` and use the local
+  workspace. GitHub Pages intentionally cannot access or modify files on the evaluator's computer.
 
 ## Evaluator model run
 

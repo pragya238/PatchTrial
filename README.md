@@ -32,9 +32,10 @@ For weaker or inexpensive models, the implementation loop also exposes exact-tex
 safe new-file creation tools. Malformed diff hunk counts are repaired automatically, repeated bad
 patch attempts are cut off, and failed live runs restore the repository to its clean starting state.
 This keeps provider quirks from turning into corrupted worktrees or endless retry loops.
-OpenRouter's logical `openrouter/free` option is backed by an ordered set of free JSON-capable
-models with automatic failover, so a rate-limited shared provider does not become a single point
-of failure.
+OpenRouter's logical `openrouter/free` option discovers the provider's current zero-cost text
+models at run time, prefers structured-output-capable routes, and automatically tries up to four
+explicit models. Every attempt has a hard timeout and is shown in the live activity log, so a slow
+or rate-limited shared provider cannot leave the interface indefinitely stuck on one request.
 
 The harness uses an OpenAI-compatible chat-completions transport without an SDK. This keeps it
 portable across DeepSeek, Qwen, and compatible evaluation gateways.
@@ -55,7 +56,9 @@ No third-party runtime packages are required.
 
 ## Configuration
 
-The API key is always read from the environment and must never be committed.
+CLI keys are read from the environment and must never be committed. The optional dashboard
+configuration keeps a pasted key only in the running server process (local mode) or the current
+browser tab's memory (hosted sample); it is never written to disk.
 
 ```bash
 export AI_API_KEY="..."
@@ -74,8 +77,9 @@ the same build works with an evaluator-owned gateway.
 The local workspace also includes presets for OpenRouter, Groq Cloud, and Google Gemini. All use
 their official OpenAI-compatible chat-completions endpoints, so no provider SDK is required.
 Choose a provider under **Configure model locally**, paste its API key, and review the editable
-base URL and model before saving. Provider free tiers, quotas, and model availability are managed
-by the providers and may change.
+base URL and model before saving. PatchTrial verifies the key against the provider's live model
+catalog and refuses to enable a model that is unavailable. Provider free tiers, quotas, and model
+availability are managed by the providers and may change.
 
 Optional controls:
 
@@ -115,8 +119,11 @@ export AI_MODEL="..."
 make ui
 ```
 
-Then open `http://127.0.0.1:8765`. The guided demo needs no API key; the live workspace uses the
-configured model and displays progress, evidence strength, counterfeit results, and the final diff.
+Then open `http://127.0.0.1:8765`. The guided demo needs no API key; the live workspace verifies
+the selected provider/model, uses it for a real repository, and displays progress, evidence
+strength, counterfeit results, and the final diff. The hosted GitHub Pages workspace can call a
+provider only for its built-in sample because a web page cannot safely access local repository
+files; use the local URL for the complete editing harness.
 
 ```bash
 export AI_API_KEY="..."

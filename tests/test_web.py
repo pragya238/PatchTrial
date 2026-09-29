@@ -1,6 +1,8 @@
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
+from patchtrial.model import ModelError
 from patchtrial.web import JobStore
 
 
@@ -63,8 +65,44 @@ class WebTests(unittest.TestCase):
 
     def test_provider_change_requires_explicit_activation(self):
         page = (Path(__file__).parent.parent / "dashboard" / "dist" / "live.html").read_text()
-        self.assertIn("Click “Use for this session” to activate", page)
+        self.assertIn("Check the connection to activate", page)
         self.assertIn("run.disabled=true", page)
+
+    def test_runtime_configuration_is_verified_before_use(self):
+        store = JobStore()
+        config = store.configure({
+            "api_key": "secret",
+            "base_url": "https://api.deepseek.com",
+            "model": "deepseek-flash",
+            "provider": "deepseek",
+        })
+        with patch("patchtrial.web.ModelClient.list_models", return_value=[{"id": "deepseek-flash"}]):
+            models = store.verify_config(config)
+        self.assertEqual(models[0]["id"], "deepseek-flash")
+
+    def test_runtime_configuration_rejects_unavailable_model(self):
+        store = JobStore()
+        config = store.configure({
+            "api_key": "secret",
+            "base_url": "https://api.deepseek.com",
+            "model": "missing-model",
+            "provider": "deepseek",
+        })
+        with patch("patchtrial.web.ModelClient.list_models", return_value=[{"id": "deepseek-flash"}]):
+            with self.assertRaisesRegex(ValueError, "not available"):
+                store.verify_config(config)
+
+    def test_runtime_configuration_surfaces_discovery_failure(self):
+        store = JobStore()
+        config = store.configure({
+            "api_key": "secret",
+            "base_url": "https://api.deepseek.com",
+            "model": "deepseek-flash",
+            "provider": "deepseek",
+        })
+        with patch("patchtrial.web.ModelClient.list_models", side_effect=ModelError("bad key")):
+            with self.assertRaisesRegex(ModelError, "bad key"):
+                store.verify_config(config)
 
     def test_public_workspace_has_a_safe_runnable_demo(self):
         page = (Path(__file__).parent.parent / "dashboard" / "dist" / "live.html").read_text()
@@ -75,9 +113,16 @@ class WebTests(unittest.TestCase):
         self.assertNotIn("$('#provider').disabled=true", page)
         self.assertNotIn("$('#model').disabled=true", page)
         self.assertNotIn("$('#key').disabled=true", page)
-        self.assertIn("Connect model for this tab", page)
+        self.assertIn("Check connection & use model", page)
         self.assertIn("Run guided sample — no API key", page)
         self.assertIn("runPublicTrial(true)", page)
+        self.assertIn("discoverProviderModels", page)
+        self.assertIn("modelDiscoveryUrl", page)
+        self.assertIn("/api/v1')+'/models?providers=qwen", page)
+        self.assertIn("AbortController", page)
+        self.assertIn("Trying '+modelId+' (30 second limit)", page)
+        self.assertIn("No configured model completed the request", page)
+        self.assertIn("redactProviderText", page)
         self.assertIn("Download .patch", page)
         self.assertIn("Evidence inspector", page)
         self.assertIn("Download proof JSON", page)

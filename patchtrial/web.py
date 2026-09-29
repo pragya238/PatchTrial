@@ -79,6 +79,29 @@ class JobStore:
     def config(self, *, require_key: bool = True) -> Config:
         return self.runtime_config or Config.from_env(require_key=require_key)
 
+    def verify_config(self, config: Config) -> list[dict]:
+        """Verify credentials and model availability before enabling live runs."""
+        models = ModelClient(config).list_models()
+        model_ids = {str(item.get("id")) for item in models}
+        if config.provider == "openrouter" and config.model == "openrouter/free":
+            has_free_text_model = any(
+                _is_free_text_model(item) for item in models
+            )
+            if not has_free_text_model:
+                raise ValueError(
+                    "OpenRouter reports no free text models for this key right now. "
+                    "Choose a specific available model or try again later."
+                )
+        elif config.model not in model_ids:
+            raise ValueError(
+                f"Model '{config.model}' is not available to this key. "
+                "Choose a model returned by the provider."
+            )
+        return models
+
+    def clear_config(self) -> None:
+        self.runtime_config = None
+
     def create(self, payload: dict) -> Job:
         repo = str(payload.get("repo", "")).strip()
         task = str(payload.get("task", "")).strip()
@@ -178,16 +201,24 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 raise ValueError("Request body must be an object")
             if route == "/api/config":
                 config = self.store.configure(payload)
+                try:
+                    models = self.store.verify_config(config)
+                except (ModelError, ValueError):
+                    self.store.clear_config()
+                    raise
                 self._json(200, {
                     "ready": True,
                     "provider": config.provider,
                     "model": config.model,
                     "base_url": config.base_url,
+                    "models": [str(item["id"]) for item in models[:250]],
                 })
             else:
                 job = self.store.create(payload)
                 self._json(202, job.public())
         except (ValueError, json.JSONDecodeError) as exc:
+            self._json(400, {"error": str(exc)})
+        except ModelError as exc:
             self._json(400, {"error": str(exc)})
 
     def _json(self, status: int, payload: dict):
@@ -201,6 +232,18 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def log_message(self, format, *args):
         return
+
+
+def _is_free_text_model(item: dict) -> bool:
+    pricing = item.get("pricing") or {}
+    try:
+        is_free = float(pricing.get("prompt", 1)) == 0 and float(
+            pricing.get("completion", 1)
+        ) == 0
+    except (TypeError, ValueError):
+        return False
+    outputs = ((item.get("architecture") or {}).get("output_modalities") or [])
+    return is_free and (not outputs or "text" in outputs)
 
 
 def build_parser() -> argparse.ArgumentParser:
