@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+import queue
 import re
+import threading
 import time
 from typing import Any, Callable
 from urllib import error, request
@@ -43,8 +45,9 @@ class ModelClient:
             headers={"Authorization": f"Bearer {self.config.api_key}"},
         )
         try:
-            with request.urlopen(req, timeout=min(self.config.timeout_seconds, 30)) as response:
-                result = json.loads(response.read().decode("utf-8"))
+            result = _urlopen_json_with_deadline(
+                req, min(self.config.timeout_seconds, 30)
+            )
         except error.HTTPError as exc:
             detail = _redact_secret(
                 exc.read().decode("utf-8", errors="replace")[:2000],
@@ -125,27 +128,33 @@ class ModelClient:
             ):
                 payload["response_format"] = {"type": "json_object"}
                 payload["provider"] = {"require_parameters": True}
-        body = json.dumps(payload).encode("utf-8")
         endpoint = f"{self.config.base_url}/chat/completions"
-        req = request.Request(
-            endpoint,
-            data=body,
-            method="POST",
-            headers={
-                "Authorization": f"Bearer {self.config.api_key}",
-                "Content-Type": "application/json",
-            },
-        )
+        route_order = [payload["model"], *(payload.get("models") or [])]
 
         last_error: Exception | None = None
         for attempt in range(self.config.max_api_retries):
+            attempt_payload = dict(payload)
+            if self.config.provider == "openrouter" and len(route_order) > 1:
+                primary_index = attempt % len(route_order)
+                attempt_payload["model"] = route_order[primary_index]
+                attempt_payload["models"] = [
+                    route for index, route in enumerate(route_order) if index != primary_index
+                ]
+            req = request.Request(
+                endpoint,
+                data=json.dumps(attempt_payload).encode("utf-8"),
+                method="POST",
+                headers={
+                    "Authorization": f"Bearer {self.config.api_key}",
+                    "Content-Type": "application/json",
+                },
+            )
             self.event(
                 f"  model request {attempt + 1}/{self.config.max_api_retries}: "
-                f"{payload['model']} ({self.config.timeout_seconds}s timeout)"
+                f"{attempt_payload['model']} ({self.config.timeout_seconds}s hard limit)"
             )
             try:
-                with request.urlopen(req, timeout=self.config.timeout_seconds) as response:
-                    result = json.loads(response.read().decode("utf-8"))
+                result = _urlopen_json_with_deadline(req, self.config.timeout_seconds)
                 choice = result["choices"][0]["message"]
                 content = choice.get("content") or ""
                 usage = result.get("usage") or {}
@@ -172,6 +181,33 @@ class ModelClient:
                 )
                 time.sleep(delay)
         raise ModelError(f"model request failed after retries: {last_error}")
+
+
+def _urlopen_json_with_deadline(req: request.Request, timeout: float) -> dict[str, Any]:
+    """Read one JSON response with a true wall-clock deadline.
+
+    ``urlopen`` applies its timeout to individual socket operations, so a provider
+    sending occasional bytes can otherwise keep a non-streaming request alive forever.
+    The daemon worker may finish later, but the trial is always released on time.
+    """
+    outcome: queue.Queue[tuple[bool, Any]] = queue.Queue(maxsize=1)
+
+    def fetch() -> None:
+        try:
+            with request.urlopen(req, timeout=timeout) as response:
+                value = json.loads(response.read().decode("utf-8"))
+            outcome.put((True, value))
+        except Exception as exc:  # delivered to the calling trial thread
+            outcome.put((False, exc))
+
+    threading.Thread(target=fetch, daemon=True).start()
+    try:
+        succeeded, value = outcome.get(timeout=timeout)
+    except queue.Empty as exc:
+        raise TimeoutError(f"provider exceeded the {timeout:g}s hard deadline") from exc
+    if succeeded:
+        return value
+    raise value
 
 
 def _retry_delay(exc: error.HTTPError, detail: str, attempt: int) -> float:

@@ -1,9 +1,16 @@
 import json
+import time
 import unittest
+from urllib import error
 from unittest.mock import patch
 
 from patchtrial.config import Config
-from patchtrial.model import ModelClient, _redact_secret, is_openrouter_free_text_model
+from patchtrial.model import (
+    ModelClient,
+    _redact_secret,
+    _urlopen_json_with_deadline,
+    is_openrouter_free_text_model,
+)
 
 
 class FakeHTTPResponse:
@@ -192,6 +199,64 @@ class ModelClientTests(unittest.TestCase):
 
         self.assertEqual(captured["payload"]["model"], "example/plain-free:free")
         self.assertNotIn("response_format", captured["payload"])
+
+    def test_openrouter_rotates_primary_model_after_retryable_failure(self):
+        payloads = []
+        catalog_payload = {
+            "data": [
+                {
+                    "id": model_id,
+                    "pricing": {"prompt": "0", "completion": "0"},
+                    "context_length": context,
+                    "architecture": {
+                        "input_modalities": ["text"],
+                        "output_modalities": ["text"],
+                    },
+                    "supported_parameters": ["response_format"],
+                }
+                for model_id, context in (
+                    ("example/coder-a:free", 100_000),
+                    ("example/coder-b:free", 90_000),
+                )
+            ]
+        }
+        response_payload = {
+            "choices": [{"message": {"content": '{"name":"finish","arguments":{}}'}}],
+        }
+
+        def fake_urlopen(req, timeout):
+            if req.get_method() == "GET":
+                return FakeHTTPResponse(catalog_payload)
+            payloads.append(json.loads(req.data))
+            if len(payloads) == 1:
+                raise error.URLError("temporary upstream failure")
+            return FakeHTTPResponse(response_payload)
+
+        config = Config(
+            api_key="sk-or-test",
+            base_url="https://openrouter.ai/api/v1",
+            model="openrouter/free",
+            provider="openrouter",
+            max_api_retries=2,
+        )
+        with patch("patchtrial.model.request.urlopen", side_effect=fake_urlopen), patch(
+            "patchtrial.model.time.sleep"
+        ):
+            ModelClient(config).complete([{"role": "user", "content": "hello"}])
+
+        self.assertEqual(payloads[0]["model"], "example/coder-a:free")
+        self.assertEqual(payloads[1]["model"], "example/coder-b:free")
+
+    def test_transport_enforces_wall_clock_deadline(self):
+        def slow_urlopen(req, timeout):
+            time.sleep(0.1)
+            return FakeHTTPResponse({"ok": True})
+
+        with patch("patchtrial.model.request.urlopen", side_effect=slow_urlopen):
+            started = time.monotonic()
+            with self.assertRaisesRegex(TimeoutError, "hard deadline"):
+                _urlopen_json_with_deadline(object(), 0.01)
+            self.assertLess(time.monotonic() - started, 0.08)
 
     def test_generic_gateway_does_not_receive_openrouter_routing_fields(self):
         captured = {}
