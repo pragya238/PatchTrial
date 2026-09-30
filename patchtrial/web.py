@@ -13,7 +13,7 @@ from urllib.parse import urlparse
 
 from .config import Config, ConfigError
 from .engine import PatchTrialEngine
-from .model import ModelClient, ModelError
+from .model import ModelClient, ModelError, is_openrouter_free_text_model
 from .repository import Repository, RepositoryError
 
 
@@ -237,15 +237,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
 
 def _is_free_text_model(item: dict) -> bool:
-    pricing = item.get("pricing") or {}
-    try:
-        is_free = float(pricing.get("prompt", 1)) == 0 and float(
-            pricing.get("completion", 1)
-        ) == 0
-    except (TypeError, ValueError):
-        return False
-    outputs = ((item.get("architecture") or {}).get("output_modalities") or [])
-    return is_free and (not outputs or "text" in outputs)
+    return is_openrouter_free_text_model(item)
 
 
 def build_parser() -> argparse.ArgumentParser:

@@ -3,7 +3,7 @@ import unittest
 from unittest.mock import patch
 
 from patchtrial.config import Config
-from patchtrial.model import ModelClient, _redact_secret
+from patchtrial.model import ModelClient, _redact_secret, is_openrouter_free_text_model
 
 
 class FakeHTTPResponse:
@@ -26,6 +26,29 @@ class ModelClientTests(unittest.TestCase):
             _redact_secret("provider echoed sk-sensitive-value", "sk-sensitive-value"),
             "provider echoed [REDACTED]",
         )
+
+    def test_openrouter_excludes_non_text_and_safety_models(self):
+        base = {
+            "pricing": {"prompt": "0", "completion": "0"},
+            "architecture": {
+                "input_modalities": ["text"],
+                "output_modalities": ["text"],
+            },
+        }
+        self.assertTrue(is_openrouter_free_text_model({**base, "id": "cohere/north-mini-code:free"}))
+        self.assertFalse(is_openrouter_free_text_model({
+            **base,
+            "id": "google/lyria-3-pro-preview",
+            "architecture": {
+                "input_modalities": ["text", "image"],
+                "output_modalities": ["text", "audio"],
+            },
+        }))
+        self.assertFalse(is_openrouter_free_text_model({
+            **base,
+            "id": "vendor/content-safety:free",
+        }))
+        self.assertFalse(is_openrouter_free_text_model({**base, "id": "openrouter/free"}))
 
     def test_openai_compatible_transport(self):
         captured = {}

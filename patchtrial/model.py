@@ -80,28 +80,22 @@ class ModelClient:
     def _discover_openrouter_free_routes(self) -> list[str]:
         if self._openrouter_routes is not None:
             return self._openrouter_routes
-        free: list[tuple[bool, int, str]] = []
+        free: list[tuple[bool, bool, int, str]] = []
         for item in self.list_models():
-            pricing = item.get("pricing") or {}
-            try:
-                is_free = float(pricing.get("prompt", 1)) == 0 and float(
-                    pricing.get("completion", 1)
-                ) == 0
-            except (TypeError, ValueError):
-                is_free = False
-            output = ((item.get("architecture") or {}).get("output_modalities") or [])
-            if not is_free or (output and "text" not in output):
+            if not is_openrouter_free_text_model(item):
                 continue
+            model_id = str(item["id"])
             supported = item.get("supported_parameters") or []
             free.append(
                 (
+                    any(token in model_id.lower() for token in ("code", "coder", "qwen")),
                     "response_format" in supported,
                     int(item.get("context_length") or 0),
-                    str(item["id"]),
+                    model_id,
                 )
             )
         free.sort(reverse=True)
-        self._openrouter_routes = [model_id for _, _, model_id in free[:4]]
+        self._openrouter_routes = [model_id for _, _, _, model_id in free[:4]]
         if not self._openrouter_routes:
             raise ModelError(
                 "OpenRouter reported no currently available free text models. "
@@ -198,6 +192,32 @@ def _model_discovery_endpoint(config: Config) -> str:
         native_base = config.base_url.replace("/compatible-mode/v1", "/api/v1")
         return f"{native_base}/models?providers=qwen&capabilities=TG&page_size=100"
     return f"{config.base_url}/models"
+
+
+def is_openrouter_free_text_model(item: dict[str, Any]) -> bool:
+    """Return whether an OpenRouter catalog entry is safe for coding chat requests."""
+    pricing = item.get("pricing") or {}
+    try:
+        is_free = float(pricing.get("prompt", 1)) == 0 and float(
+            pricing.get("completion", 1)
+        ) == 0
+    except (TypeError, ValueError):
+        return False
+    if not is_free:
+        return False
+
+    model_id = str(item.get("id", "")).lower()
+    if not model_id or model_id == OPENROUTER_FREE_ALIAS:
+        return False
+    if any(token in model_id for token in ("safety", "moderation", "guard")):
+        return False
+
+    architecture = item.get("architecture") or {}
+    inputs = architecture.get("input_modalities") or []
+    outputs = architecture.get("output_modalities") or []
+    # Multimodal generators such as Lyria advertise text *and* audio output.
+    # The harness needs a plain textual JSON response, so accept text-only output.
+    return (not inputs or "text" in inputs) and outputs == ["text"]
 
 
 def _redact_secret(value: str, secret: str) -> str:
