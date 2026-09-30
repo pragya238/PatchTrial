@@ -79,7 +79,9 @@ their official OpenAI-compatible chat-completions endpoints, so no provider SDK 
 Choose a provider under **Configure model locally**, paste its API key, and review the editable
 base URL and model before saving. PatchTrial verifies the key against the provider's live model
 catalog and refuses to enable a model that is unavailable. Provider free tiers, quotas, and model
-availability are managed by the providers and may change.
+availability are managed by the providers and may change. Dashboard requests use two bounded
+attempts with a 30-second timeout each and display every attempt in the live activity feed; the
+CLI limits remain configurable with the environment variables below.
 
 Optional controls:
 

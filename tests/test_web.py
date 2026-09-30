@@ -17,6 +17,8 @@ class WebTests(unittest.TestCase):
         })
         self.assertEqual(config.base_url, "https://api.deepseek.com")
         self.assertEqual(config.provider, "deepseek")
+        self.assertEqual(config.timeout_seconds, 30)
+        self.assertEqual(config.max_api_retries, 2)
         self.assertEqual(store.config().api_key, "secret")
 
     def test_runtime_configuration_requires_https(self):

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import json
 import re
 import time
-from typing import Any
+from typing import Any, Callable
 from urllib import error, request
 
 from .config import Config
@@ -27,8 +27,9 @@ class ModelResponse:
 class ModelClient:
     """Minimal OpenAI-compatible client usable with DeepSeek and Qwen gateways."""
 
-    def __init__(self, config: Config):
+    def __init__(self, config: Config, event: Callable[[str], None] | None = None):
         self.config = config
+        self.event = event or (lambda _: None)
         self._openrouter_routes: list[str] | None = None
         self._model_catalog: list[dict[str, Any]] | None = None
 
@@ -144,6 +145,10 @@ class ModelClient:
 
         last_error: Exception | None = None
         for attempt in range(self.config.max_api_retries):
+            self.event(
+                f"  model request {attempt + 1}/{self.config.max_api_retries}: "
+                f"{payload['model']} ({self.config.timeout_seconds}s timeout)"
+            )
             try:
                 with request.urlopen(req, timeout=self.config.timeout_seconds) as response:
                     result = json.loads(response.read().decode("utf-8"))
@@ -168,6 +173,9 @@ class ModelClient:
                 last_error = exc
                 delay = min(16, 2**attempt)
             if attempt < self.config.max_api_retries - 1:
+                self.event(
+                    f"  provider attempt failed; retrying in {delay:g}s"
+                )
                 time.sleep(delay)
         raise ModelError(f"model request failed after retries: {last_error}")
 

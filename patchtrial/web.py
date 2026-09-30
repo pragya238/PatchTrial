@@ -73,6 +73,8 @@ class JobStore:
             base_url=base_url,
             model=model,
             provider=provider,
+            timeout_seconds=30,
+            max_api_retries=2,
         )
         return self.runtime_config
 
@@ -137,7 +139,7 @@ class JobStore:
             engine = PatchTrialEngine(
                 config,
                 repository,
-                ModelClient(config),
+                ModelClient(config, event=job.events.append),
                 test_command=test_command,
                 event=job.events.append,
             )
